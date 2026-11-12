@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 576" preserveAspectRatio="xMidYMid slice">
+  <!-- Wooden tabletop the book rests on: flat brown with a few long grain lines. -->
+  <rect width="1024" height="576" fill="#6b3f2e" />
+  <g fill="none" stroke="#3f2217" stroke-width="1.2" opacity=".55" stroke-linecap="round">
+    <path d="M0 40 C140 55 230 10 380 22 S600 52 760 20 S940 8 1024 30" />
+    <path d="M690 30 C730 8 800 10 820 18 C790 36 730 40 690 30" />
+    <path d="M0 80 C120 70 230 100 330 70 S560 40 640 66" />
+    <path d="M0 120 C60 112 90 126 100 150" />
+    <path d="M900 112 C950 108 990 116 1024 112" />
+    <path d="M920 148 C960 144 990 150 1024 146" />
+    <path d="M920 298 C960 304 990 296 1024 300" />
+    <path d="M920 340 C960 336 990 342 1024 338" />
+    <path d="M0 400 C40 398 70 406 100 402" />
+    <path d="M0 540 C150 528 250 556 400 540 S650 520 800 542 S960 548 1024 536" />
+    <path d="M200 566 C320 556 480 570 640 560 S900 566 1024 560" />
+  </g>
+</svg>
