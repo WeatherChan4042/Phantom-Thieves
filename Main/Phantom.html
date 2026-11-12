@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#6b3e2c" />
+  <title>LINAW — Your personal document journal</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <!-- Shared header: visible on every page in the book. -->
+    <header class="topbar">
+      <a class="brand" href="#home" aria-label="LINAW home">
+        <span class="brand-mark">L</span>
+        <span>
+          <strong>LINAW</strong>
+          <small>your personal document journal</small>
+        </span>
+      </a>
+      <div class="topbar-note">
+        <span class="status-dot"></span>
+        Your little corner of clarity
+      </div>
+      <button class="icon-button" id="helpButton" type="button" aria-label="About LINAW" title="About LINAW">?</button>
+    </header>
+
+    <!-- The page content is loaded into the book by js/app.js. -->
+    <section class="book-stage" aria-label="LINAW interactive book">
+      <div class="book-art" id="bookArt">
+        <div class="page-content book-page left-page" id="leftPage" aria-live="polite"></div>
+        <div class="page-leaf-stage" id="pageLeafStage">
+          <div class="page-stack" id="pageStack" aria-hidden="true"></div>
+          <div class="page-content book-page right-page" id="rightPage" aria-live="polite"></div>
+          <button class="page-corner page-corner-prev" id="pageCornerPrev" type="button" aria-label="Turn to previous page" title="Previous page">←</button>
+          <button class="page-corner page-corner-next" id="pageCornerNext" type="button" aria-label="Turn to next page" title="Next page">→</button>
+        </div>
+
+        <!-- Each bookmark's data-page value matches a file in pages/. -->
+        <nav class="bookmark-nav" aria-label="Book sections">
+          <button
+            class="bookmark coral"
+            type="button"
+            data-page="home"
+            aria-label="Home"
+            title="Home"
+            aria-current="page"
+          ></button>
+          <button
+            class="bookmark gold"
+            type="button"
+            data-page="collection"
+            aria-label="My Collection"
+            title="My Collection"
+          ></button>
+          <button
+            class="bookmark green"
+            type="button"
+            data-page="upload"
+            aria-label="New Entry"
+            title="New Entry"
+          ></button>
+          <button
+            class="bookmark teal"
+            type="button"
+            data-page="assistant"
+            aria-label="Ask LINAW"
+            title="Ask LINAW"
+          ></button>
+          <button
+            class="bookmark plum"
+            type="button"
+            data-page="notes"
+            aria-label="My Notes"
+            title="My Notes"
+          ></button>
+        </nav>
+
+        <!-- Previous and Next follow the bookmark order. -->
+        <div class="book-controls">
+          <button id="prevButton" class="turn-button" type="button" aria-label="Previous page">
+            ← <span>Previous</span>
+          </button>
+          <span class="page-indicator" id="pageIndicator">01 / 05</span>
+          <button id="nextButton" class="turn-button" type="button" aria-label="Next page">
+            <span>Next</span> →
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Shared footer and About dialog stay outside the page content. -->
+    <footer class="footer-note">
+      <span>Phantom Thieves</span>
+      <span>LINAW · A Filipino document companion</span>
+    </footer>
+  </main>
+
+  <dialog id="aboutDialog" class="about-dialog" aria-labelledby="aboutTitle">
+    <button class="dialog-close" id="closeDialog" type="button" aria-label="Close">×</button>
+    <p class="eyebrow">A note from LINAW</p>
+    <h2 id="aboutTitle">Documents, made a little clearer.</h2>
+    <p>
+      LINAW is a friendly place to keep everyday documents, understand their contents,
+      and check information before relying on it.
+    </p>
+    <p class="muted">
+      This is the front-end interface prototype. Secure accounts, document storage, and
+      Lumen AI processing will be connected in the next development stage.
+    </p>
+  </dialog>
+  <script src="js/app.js"></script>
+</body>
+</html>
+
+
+
+

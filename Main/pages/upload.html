@@ -1,0 +1,32 @@
+<!-- New Entry page content loaded into the book. -->
+<div class="eyebrow">A NEW ENTRY</div>
+<h2>Place it<br>between the pages.</h2>
+<p class="page-lead">Choose a photo or PDF. You can review the details before saving anything.</p>
+<label class="drop-zone" id="dropZone">
+  <span class="upload-icon">↑</span>
+  <strong>Choose a document</strong>
+  <span>PDF, JPG or PNG · up to 10 MB</span>
+  <input
+    id="fileInput"
+    class="file-input"
+    type="file"
+    accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+    aria-describedby="fileFeedback"
+  />
+</label>
+<div id="fileFeedback" class="file-feedback" role="status" aria-live="polite" aria-atomic="true">No document selected yet.</div>
+<label class="field-label" for="categorySelect">Put it in a section</label>
+<select id="categorySelect" class="paper-input">
+  <option>Bills</option>
+  <option>Receipts</option>
+  <option>Personal</option>
+  <option>School</option>
+  <option>Government</option>
+  <option>Other</option>
+</select>
+<button id="saveDocument" class="paper-button primary full-width" type="button" disabled>Save to my collection</button>
+<p class="tiny-note">
+  Prototype note: this saves a local demo entry in this browser only. Secure cloud
+  upload and OCR are not connected yet.
+</p>
+
