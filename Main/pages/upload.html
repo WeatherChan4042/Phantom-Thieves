@@ -1,32 +1,51 @@
 <!-- New Entry page content loaded into the book. -->
 <div class="eyebrow">A NEW ENTRY</div>
 <h2>Place it<br>between the pages.</h2>
-<p class="page-lead">Choose a photo or PDF. You can review the details before saving anything.</p>
-<label class="drop-zone" id="dropZone">
-  <span class="upload-icon">↑</span>
-  <strong>Choose a document</strong>
-  <span>PDF, JPG or PNG · up to 10 MB</span>
-  <input
-    id="fileInput"
-    class="file-input"
-    type="file"
-    accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-    aria-describedby="fileFeedback"
-  />
-</label>
-<div id="fileFeedback" class="file-feedback" role="status" aria-live="polite" aria-atomic="true">No document selected yet.</div>
-<label class="field-label" for="categorySelect">Put it in a section</label>
-<select id="categorySelect" class="paper-input">
-  <option>Bills</option>
-  <option>Receipts</option>
-  <option>Personal</option>
-  <option>School</option>
-  <option>Government</option>
-  <option>Other</option>
-</select>
-<button id="saveDocument" class="paper-button primary full-width" type="button" disabled>Save to my collection</button>
-<p class="tiny-note">
-  Prototype note: this saves a local demo entry in this browser only. Secure cloud
-  upload and OCR are not connected yet.
-</p>
+<p class="page-lead">Choose a photo or PDF. Lumen OCR reads it, and you review the text before saving.</p>
 
+<!-- Step 1: choose a file. -->
+<div id="stepChoose">
+  <label class="drop-zone" id="dropZone">
+    <span class="upload-icon">↑</span>
+    <strong>Choose a document</strong>
+    <span>PDF, JPG or PNG · up to 10 MB</span>
+    <input
+      id="fileInput"
+      class="file-input"
+      type="file"
+      accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+      aria-describedby="fileFeedback"
+    />
+  </label>
+</div>
+<div id="fileFeedback" class="file-feedback" role="status" aria-live="polite" aria-atomic="true">No document selected yet.</div>
+
+<!-- Step 2: preview, then read with Lumen OCR. -->
+<div id="stepPreview" hidden>
+  <div class="preview-panel" id="previewPanel" aria-label="Document preview"></div>
+  <div class="button-row">
+    <button id="readDocument" class="paper-button primary" type="button">Read with Lumen OCR</button>
+    <button id="cancelUpload" class="paper-button" type="button">Choose another</button>
+  </div>
+</div>
+
+<!-- Step 3: review and edit what the AI read, then save. -->
+<div id="stepReview" hidden>
+  <label class="field-label" for="entryTitle">Title</label>
+  <input id="entryTitle" class="paper-input" maxlength="100" />
+  <label class="field-label" for="categorySelect">Put it in a section</label>
+  <select id="categorySelect" class="paper-input">
+    <option>Bills</option>
+    <option>Receipts</option>
+    <option>Personal</option>
+    <option>School</option>
+    <option>Government</option>
+    <option>Other</option>
+  </select>
+  <label class="field-label" for="ocrOutput">Text read by Lumen OCR (you can edit it)</label>
+  <textarea id="ocrOutput" class="paper-input note-area ocr-area" maxlength="20000"></textarea>
+  <div class="button-row">
+    <button id="saveDocument" class="paper-button primary" type="button">Keep and save</button>
+    <button id="discardDocument" class="paper-button" type="button">Discard</button>
+  </div>
+</div>

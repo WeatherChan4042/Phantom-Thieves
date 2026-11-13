@@ -1,11 +1,11 @@
 <!-- Notes page content loaded into the book. -->
 <div class="eyebrow">YOUR PERSONAL NOTES</div>
 <h2>Keep what<br>matters.</h2>
-<p class="page-lead">Save useful details and reminders after reviewing your documents.</p>
+<p class="page-lead">Save useful details and reminders. Notes appear in your collection.</p>
 <label class="field-label" for="noteTitle">Note title</label>
 <input id="noteTitle" class="paper-input" maxlength="100" placeholder="e.g. Electricity bill reminder" />
 <label class="field-label" for="noteBody">Your note</label>
-<textarea id="noteBody" class="paper-input note-area" maxlength="1500" placeholder="Write something worth remembering..."></textarea>
+<textarea id="noteBody" class="paper-input note-area" aria-describedby="noteCounter" placeholder="Write something worth remembering..."></textarea>
+<p class="tiny-note" id="noteCounter">0 / 300 words</p>
 <button id="saveNote" class="paper-button primary full-width" type="button">Save note</button>
 <p id="noteFeedback" class="tiny-note" role="status" aria-live="polite" aria-atomic="true"></p>
-<div id="savedNotes" class="saved-notes" aria-live="polite"></div>

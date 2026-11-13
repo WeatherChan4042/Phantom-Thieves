@@ -1,20 +1,10 @@
 <!-- Ask LINAW page content loaded into the book. -->
 <div class="eyebrow">A FRIENDLY HELPER</div>
 <h2>Ask LINAW</h2>
-<p class="page-lead">Have a question about a document? This is where your AI conversation will live.</p>
-<div class="chat-paper" id="chatMessages" role="log" aria-label="LINAW conversation" aria-live="polite" aria-relevant="additions">
-  <div class="chat-bubble bot">
-    Hello! I can help explain a document in simpler words. Choose a sample question
-    to preview the conversation.
-  </div>
-</div>
-<div class="prompt-suggestions">
-  <button class="prompt-chip" type="button">What does this bill mean?</button>
-  <button class="prompt-chip" type="button">Where can I find the due date?</button>
-  <button class="prompt-chip" type="button">Explain this in Filipino.</button>
-</div>
+<p class="page-lead">Ask a question about your documents. Lumen AI answers here.</p>
+<div class="chat-paper" id="chatMessages" role="log" aria-label="LINAW conversation" aria-live="polite" aria-relevant="additions"></div>
 <form id="chatForm" class="chat-form">
-  <input id="chatInput" class="paper-input" type="text" maxlength="500" aria-label="Write a question" placeholder="Write a question..." autocomplete="off" />
-  <button class="send-button" type="submit" aria-label="Send message">➤</button>
+  <input id="chatInput" class="paper-input" type="text" aria-label="Write a question" aria-describedby="chatCounter" placeholder="Write a question..." autocomplete="off" />
+  <button class="send-button" id="chatSend" type="submit" aria-label="Send message">➤</button>
 </form>
-<p class="tiny-note">Demo conversation only. Lumen AI Chat will be connected after its API is confirmed.</p>
+<p class="tiny-note"><span id="chatCounter">0 / 250 words</span> <span id="chatStatus" role="status" aria-live="polite"></span></p>

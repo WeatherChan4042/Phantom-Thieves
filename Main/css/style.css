@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap');
+﻿@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap');
 
 /* Shared palette used by the paper, book, and bookmark colors. */
 :root {
@@ -9,6 +9,11 @@
   --teal: #4db99b;
   --plum: #a66a69;
   --gold-plate: #e2ae5d;
+  --logo-gold: #f4c78f;    /* colour of the "L" in the LINAW logo, reused for the stars */
+  --star-outline: #9a5a32; /* a darker shade of the logo gold */
+  --frame-cream: #ffe4c8;
+  --leaf-fill: #aaa653;
+  --leaf-outline: #5f5724;
 }
 
 * {
@@ -23,8 +28,8 @@ body {
   min-height: 100dvh;
   color: var(--ink);
   font-family: "DM Sans", sans-serif;
-  padding: 14px;
-  background: #ffebcf;
+  padding: 0;
+  background: #6b3f2e;
 }
 
 button,
@@ -51,7 +56,7 @@ textarea:focus-visible {
   outline-offset: 3px;
 }
 
-/* App frame and shared header. */
+/* App frame: the wooden tabletop (wood.svg) that the book rests on. */
 .app-shell {
   position: relative;
   isolation: isolate;
@@ -59,75 +64,26 @@ textarea:focus-visible {
   display: flex;
   flex-direction: column;
   width: 100%;
-  min-height: calc(100vh - 28px);
-  min-height: calc(100dvh - 28px);
+  min-height: 100vh;
+  min-height: 100dvh;
   margin: auto;
-  padding: 12px clamp(12px, 2vw, 30px);
-  background-color: #70442f;
-  background-image:
-    repeating-linear-gradient(176deg, transparent 0 82px, #3f251a55 83px 85px, transparent 86px 166px),
-    repeating-linear-gradient(0deg, #bc815014 0 2px, transparent 3px 17px),
-    radial-gradient(ellipse at 50% 40%, #805039 0%, #70442f 68%, #613a2a 100%);
-  box-shadow: inset 0 0 0 1px #936344, 0 4px 16px #482a1d30;
+  /* Side room keeps the logo and help button clear of the corner vines. */
+  padding: 26px clamp(60px, 9vw, 130px) 16px;
+  background:
+    radial-gradient(ellipse at 50% 45%, transparent 55%, #2d160e66 100%),
+    url("wood.svg") center / cover no-repeat,
+    #6b3f2e;
 }
 
-.app-shell::before,
-.app-shell::after {
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  pointer-events: none;
-  content: "";
-}
-
-.app-shell::before {
-  background-image:
-    linear-gradient(115deg, transparent 48%, #a7a14d 49% 51%, transparent 52%) 1% 0 / 13% 35% no-repeat,
-    radial-gradient(ellipse 13px 25px at 3% 5%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 12px 23px at 6% 10%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 13px 25px at 3% 15%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 12px 23px at 6% 20%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 13px 25px at 3% 25%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    linear-gradient(20deg, transparent 48%, #a7a14d 49% 51%, transparent 52%) 0 100% / 22% 20% no-repeat,
-    radial-gradient(ellipse 13px 24px at 4% 90%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 12px 22px at 8% 94%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 13px 24px at 12% 96%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 9px 9px at 6% 84%, #ffebcf 0 68%, transparent 73%),
-    radial-gradient(ellipse 9px 9px at 7.2% 85%, #ffebcf 0 68%, transparent 73%),
-    radial-gradient(ellipse 9px 9px at 5.4% 85%, #ffebcf 0 68%, transparent 73%),
-    radial-gradient(ellipse 9px 9px at 6.3% 86.4%, #ffebcf 0 68%, transparent 73%),
-    radial-gradient(circle at 6.3% 85%, #d9a66d 0 3px, transparent 4px);
-}
-
-.app-shell::after {
-  background-image:
-    linear-gradient(65deg, transparent 48%, #a7a14d 49% 51%, transparent 52%) 100% 0 / 15% 26% no-repeat,
-    radial-gradient(ellipse 13px 25px at 97% 5%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 12px 23px at 94% 10%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 13px 25px at 97% 15%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 12px 23px at 94% 20%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    linear-gradient(150deg, transparent 48%, #a7a14d 49% 51%, transparent 52%) 100% 48% / 17% 25% no-repeat,
-    radial-gradient(ellipse 13px 24px at 97% 43%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 12px 22px at 94% 47%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 13px 24px at 97% 51%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    linear-gradient(135deg, transparent 48%, #a7a14d 49% 51%, transparent 52%) 100% 100% / 23% 30% no-repeat,
-    radial-gradient(ellipse 13px 24px at 98% 88%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 12px 22px at 94% 92%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 13px 24px at 97% 97%, #aaa653 0 57%, #706c35 61% 66%, transparent 70%),
-    radial-gradient(ellipse 9px 9px at 95% 84%, #ffebcf 0 68%, transparent 73%),
-    radial-gradient(ellipse 9px 9px at 96.2% 85%, #ffebcf 0 68%, transparent 73%),
-    radial-gradient(ellipse 9px 9px at 94.2% 85%, #ffebcf 0 68%, transparent 73%),
-    radial-gradient(ellipse 9px 9px at 95.2% 86.4%, #ffebcf 0 68%, transparent 73%),
-    radial-gradient(circle at 95.2% 85%, #d9a66d 0 3px, transparent 4px);
-}
-
+/* Three columns: note on the left, logo centred, help button on the right. */
 .topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
+  gap: 16px;
   flex: 0 0 48px;
   min-height: 48px;
-  padding: 0 2.2%;
+  padding: 0 1%;
   color: #ffebd5;
 }
 
@@ -136,22 +92,27 @@ textarea:focus-visible {
 }
 
 .brand {
+  grid-area: 1 / 2;
+  justify-self: center;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   color: inherit;
   text-decoration: none;
 }
 
 .brand-mark {
   display: grid;
+  flex: 0 0 auto;
   place-items: center;
   width: 38px;
   height: 38px;
-  border: 1px solid #f4c78f;
+  border: 1px solid var(--logo-gold);
   border-radius: 50%;
-  color: #f4c78f;
-  font: italic 25px Georgia, serif;
+  color: var(--logo-gold);
+  font: italic 25px/1 Georgia, serif;
+  /* The italic L leans right and sits low, so nudge it to the circle's visual centre. */
+  padding: 0 2px 3px 0;
 }
 
 .brand strong {
@@ -169,9 +130,15 @@ textarea:focus-visible {
 }
 
 .topbar-note {
+  grid-area: 1 / 1;
+  justify-self: start;
+  overflow: hidden;
+  max-width: 100%;
   opacity: .9;
   font-size: 12px;
   letter-spacing: .04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-dot {
@@ -185,6 +152,8 @@ textarea:focus-visible {
 }
 
 .icon-button {
+  grid-area: 1 / 3;
+  justify-self: end;
   width: 30px;
   height: 30px;
   border: 1px solid #e5b987;
@@ -194,7 +163,7 @@ textarea:focus-visible {
   font-weight: 700;
 }
 
-/* CSS-drawn book cover and paper spread. */
+/* The open book. Its look is drawn by book.svg (cover, corners, paper) and spine.svg (centre strap). */
 .book-stage {
   display: grid;
   flex: 1;
@@ -205,65 +174,36 @@ textarea:focus-visible {
 .book-art {
   position: relative;
   isolation: isolate;
-  width: min(105%, 1440px, calc((100vh - 118px) * 1.85));
-  width: min(105%, 1440px, calc((100dvh - 118px) * 1.85));
-  aspect-ratio: 1294 / 733;
-  filter: drop-shadow(0 18px 18px #2b160d55);
+  width: min(100%, 1400px, calc((100vh - 118px) * 1.7778));
+  width: min(100%, 1400px, calc((100dvh - 118px) * 1.7778));
+  aspect-ratio: 1024 / 576;
+  background: url("book.svg") center / 100% 100% no-repeat;
   --page-accent: var(--coral);
-  /* Match each live page to the paper area drawn by .book-art::after. */
-  --page-top: 21%;
-  --page-left: 19.5%;
-  --page-right: 50.5%;
-  --page-width: 30%;
-  --page-height: 57%;
-  --page-padding: clamp(8px, 1.5vw, 22px) clamp(8px, 1vw, 16px);
+  /* Paper areas measured from the artwork (1024 x 576 canvas), as percentages. */
+  --page-top: 16.67%;
+  --page-height: 66.67%;
+  --page-left: 12.3%;       /* left page starts here */
+  --page-width: 36.3%;      /* width of one visible page */
+  --stage-left: 50%;        /* page-turn hinge: the middle of the gutter */
+  --stage-width: 37.7%;     /* hinge to the right page's outer edge */
+  --gutter-ratio: .03886;   /* gutter hidden under the strap, as a share of the stage width */
+  --strap-gap: .05;         /* extra text margin beside the strap, as a share of the stage width */
+  --pad-y: clamp(8px, 1.5vw, 22px);
+  --pad-x: clamp(8px, 1vw, 16px);
+  --page-padding: var(--pad-y) var(--pad-x);
 }
 
-.book-art::before,
-.book-art::after {
+/* The gold strap sits above the pages so turning leaves slide underneath it. */
+.book-spine {
   position: absolute;
+  z-index: 5;
+  top: 10.42%;
+  left: 47.27%;
+  width: 5.57%;
+  height: 79%;
+  background: url("spine.svg") center / 100% 100% no-repeat;
+  filter: drop-shadow(0 2px 3px #3a1d1255);
   pointer-events: none;
-  content: "";
-}
-
-.book-art::before {
-  z-index: -2;
-  inset: 17% 17% 16%;
-  border: 9px double #9c603e;
-  border-radius: 2.5% / 4%;
-  background:
-    radial-gradient(circle, #f7d28b 0 2px, #99603a 2.5px 3.5px, transparent 4px) 2.1% 18% / 12px 12px no-repeat,
-    radial-gradient(circle, #f7d28b 0 2px, #99603a 2.5px 3.5px, transparent 4px) 15% 18% / 12px 12px no-repeat,
-    radial-gradient(circle, #f7d28b 0 2px, #99603a 2.5px 3.5px, transparent 4px) 2.1% 82% / 12px 12px no-repeat,
-    radial-gradient(circle, #f7d28b 0 2px, #99603a 2.5px 3.5px, transparent 4px) 15% 82% / 12px 12px no-repeat,
-    radial-gradient(circle, #f7d28b 0 2px, #99603a 2.5px 3.5px, transparent 4px) 85% 18% / 12px 12px no-repeat,
-    radial-gradient(circle, #f7d28b 0 2px, #99603a 2.5px 3.5px, transparent 4px) 98% 18% / 12px 12px no-repeat,
-    radial-gradient(circle, #f7d28b 0 2px, #99603a 2.5px 3.5px, transparent 4px) 85% 82% / 12px 12px no-repeat,
-    radial-gradient(circle, #f7d28b 0 2px, #99603a 2.5px 3.5px, transparent 4px) 98% 82% / 12px 12px no-repeat,
-    linear-gradient(90deg, transparent 48.5%, #a96e3e 49%, var(--gold-plate) 49.6%, #f0ca7d 50%, #a96e3e 50.8%, transparent 51.5%),
-    linear-gradient(135deg, #f4c777 0 54%, #bd7d3d 56% 72%, #8f512f 74% 77%, transparent 78%) top left / 14% 20% no-repeat,
-    linear-gradient(225deg, #f4c777 0 54%, #bd7d3d 56% 72%, #8f512f 74% 77%, transparent 78%) top right / 14% 20% no-repeat,
-    linear-gradient(45deg, #f4c777 0 54%, #bd7d3d 56% 72%, #8f512f 74% 77%, transparent 78%) bottom left / 14% 20% no-repeat,
-    linear-gradient(315deg, #f4c777 0 54%, #bd7d3d 56% 72%, #8f512f 74% 77%, transparent 78%) bottom right / 14% 20% no-repeat,
-    linear-gradient(145deg, #98553e, #693829 72%, #8a4c36);
-  box-shadow: inset 0 0 0 2px #d5a06a, 0 16px 24px #2b160d66;
-}
-
-.book-art::after {
-  z-index: -1;
-  inset: 20% 18.5% 20%;
-  border: 2px solid #c58d4a;
-  border-radius: 1% / 2%;
-  background:
-    linear-gradient(90deg, transparent 47.2%, #986337 48%, #d4a157 48.8%, #f6d68f 49.35%, #fff1c9 49.8%, #f1cd7e 50.2%, #c58c48 50.8%, #8e5936 51.6%, transparent 52.5%),
-    linear-gradient(90deg, #ffd9ad 0%, #ffe3bf 47%, #d9aa76 48%, #ffe0b8 52%, #ffd6a5 100%);
-  box-shadow:
-    inset 0 0 0 3px #ffe6bb,
-    inset 0 0 0 6px #c48b47,
-    inset 8px 0 0 #f8dbad,
-    inset -8px 0 0 #f8dbad,
-    0 2px 3px #fff0d288,
-    0 7px 12px #54281766;
 }
 
 /* The selected bookmark also sets the page's small accent details. */
@@ -300,148 +240,121 @@ textarea:focus-visible {
 
 .left-page { left: var(--page-left); }
 
-/* A separate leaf sits over the live page so its reverse can reveal the next section. */
+/* The stage starts at the gutter's centre, which is also the hinge of every page turn. */
 .page-leaf-stage {
   position: absolute;
   z-index: 1;
   top: var(--page-top);
-  left: var(--page-right);
-  width: var(--page-width);
+  left: var(--stage-left);
+  width: var(--stage-width);
   height: var(--page-height);
-  perspective: 1800px;
+  perspective: 1600px;
+  perspective-origin: 0% 50%;
   pointer-events: none;
 }
 
-.page-stack {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  --stack-depth: 4px;
-}
-
-.page-stack::before,
-.page-stack::after {
-  position: absolute;
-  content: "";
-  border: 1px solid #c2925f;
-  background: repeating-linear-gradient(0deg, #fff0d5 0 2px, #dab88c 2px 3px);
-  transition: right .35s ease, bottom .35s ease, opacity .35s ease;
-}
-
-.page-stack::before {
-  inset: 3px calc(0px - var(--stack-depth)) calc(0px - var(--stack-depth)) 3px;
-  box-shadow: 1px 1px 2px #54281744;
-}
-
-.page-stack::after {
-  inset: 1px calc(0px - var(--stack-depth)) calc(0px - var(--stack-depth)) 1px;
-  background: #fbe6c4;
-}
-
-.page-stack.is-empty::before,
-.page-stack.is-empty::after { opacity: 0; }
-
+/* The live right page leaves room on its left for the gutter under the strap. */
 .page-leaf-stage > .right-page {
   position: absolute;
   z-index: 1;
   top: 0;
-  left: 0;
-  width: 100%;
+  left: calc(var(--gutter-ratio) * 100%);
+  width: calc(100% - var(--gutter-ratio) * 100%);
   height: 100%;
+  /* Extra space beside the strap so text never touches it (matches the leaf below). */
+  padding-left: calc(var(--pad-x) + var(--strap-gap) * 100%);
   pointer-events: auto;
 }
 
-.turning-leaf {
+/* The left page gets the same breathing room on its strap side. */
+.left-page { padding-right: calc(var(--pad-x) + var(--strap-gap) * 37.7%); }
+
+/* Soft shadows the lifted leaf casts on the page beneath it (right side, then left side). */
+.turn-shadow {
   position: absolute;
-  z-index: 3;
-  inset: 0;
-  display: none;
-  transform-style: preserve-3d;
-  transform-origin: left center;
-  box-shadow: 0 4px 9px #4b2a1940;
-}
-
-.turning-leaf.is-active { display: block; }
-.turning-leaf.is-forward { animation: leaf-forward .72s cubic-bezier(.42,.02,.18,1) both; }
-.turning-leaf.is-backward {
-  animation: leaf-backward .72s cubic-bezier(.42,.02,.18,1) both;
-}
-
-.leaf-face {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  color: #542817;
-  text-shadow: 0 1px #fff2df66;
-  background:
-    linear-gradient(90deg, #d6a977, #ffe8c6 3%, #fff0d4 96%, #cc9861),
-    #ffe8c6;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  box-shadow: inset 0 0 0 1px #a8785055, inset 6px 0 10px #9b674222;
-}
-
-.leaf-face-back { transform: rotateY(180deg); }
-
-.leaf-content {
-  position: absolute;
+  z-index: 2;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  overflow: hidden;
-  padding: var(--page-padding);
+  opacity: 0;
+  background: linear-gradient(90deg, #30180d73, #30180d1f 40%, transparent 78%);
+  pointer-events: none;
 }
 
-.turning-leaf::after {
+.turn-shadow-left {
+  left: -100%;
+  background: linear-gradient(270deg, #30180d73, #30180d1f 40%, transparent 78%);
+}
+
+/*
+  A turning leaf is a chain of thin vertical segments. Each segment hangs off the
+  previous one and rotates a little extra, which bends the paper like a real page.
+*/
+.turning-leaf {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+.leaf-segment {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  width: var(--seg-w);
+  height: 100%;
+  transform-style: preserve-3d;
+  transform-origin: 0 50%;
+  will-change: transform;
+}
+
+.turning-leaf > .leaf-segment { left: 0; }
+
+.leaf-face {
+  position: absolute;
+  top: 0;
+  right: -.6px;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.leaf-face-back { transform: rotateY(180deg); }
+
+/* Every segment shows its own slice of one full-size page, so the slices join seamlessly. */
+.leaf-content {
+  position: absolute;
+  top: 0;
+  width: var(--leaf-w);
+  height: 100%;
+  overflow: hidden;
+  padding: var(--page-padding);
+  color: #542817;
+  text-shadow: 0 1px #fff2df66;
+}
+
+.leaf-face-front .leaf-content {
+  padding-left: calc(var(--leaf-w) * (var(--gutter-ratio) + var(--strap-gap)) + var(--pad-x));
+  background: linear-gradient(90deg, #efc293, #ffd8ae 3%, #ffd4a8 22%), #ffd4a8;
+}
+
+.leaf-face-back .leaf-content {
+  padding-right: calc(var(--leaf-w) * (var(--gutter-ratio) + var(--strap-gap)) + var(--pad-x));
+  background: linear-gradient(270deg, #efc293, #ffd8ae 3%, #ffd4a8 22%), #ffd4a8;
+}
+
+/* Darkens each segment according to how far it is tilted away from the light. */
+.leaf-face::after {
   position: absolute;
   inset: 0;
   content: "";
-  opacity: 0;
-  background: linear-gradient(90deg, #39201588, transparent 35%, #fff4d155 70%, #39201566);
-  backface-visibility: hidden;
+  background: rgb(58 28 14 / var(--shade, 0));
   pointer-events: none;
-  animation: leaf-shade .72s ease both;
 }
-
-@keyframes leaf-forward {
-  0% { transform: rotateY(0); }
-  45% { transform: rotateY(-92deg); }
-  100% { transform: rotateY(-180deg); }
-}
-
-@keyframes leaf-backward {
-  0% { transform: rotateY(180deg); }
-  45% { transform: rotateY(88deg); }
-  100% { transform: rotateY(0); }
-}
-
-@keyframes leaf-shade {
-  0%, 100% { opacity: 0; }
-  42%, 58% { opacity: .7; }
-}
-
-.page-corner {
-  position: absolute;
-  z-index: 4;
-  bottom: 0;
-  width: 7%;
-  height: 9%;
-  padding: 0;
-  border: 0;
-  color: #704b33;
-  background: transparent;
-  font-size: clamp(13px, 1.1vw, 17px);
-  opacity: .38;
-  pointer-events: auto;
-  transition: opacity .18s, transform .18s;
-}
-
-.page-corner:hover { opacity: .86; transform: translateY(-2px); }
-.page-corner:focus-visible { opacity: 1; outline: 1px solid #e2ae5d; outline-offset: 2px; }
-.page-corner:disabled { opacity: 0; pointer-events: none; }
-.page-corner-prev { left: -110%; }
-.page-corner-next { right: 0; }
 
 /* Shared typography and paper-style controls. */
 .eyebrow {
@@ -596,8 +509,6 @@ p {
 .document-list {
   display: grid;
   gap: 6px;
-  max-height: 48%;
-  overflow: auto;
   padding-right: 3px;
 }
 
@@ -806,12 +717,13 @@ p {
 /* Bookmark navigation and page controls. */
 .bookmark-nav {
   position: absolute;
-  top: 26%;
-  left: 80%;
+  z-index: 6;
+  top: 34%;
+  left: 87.9%;
   display: flex;
   flex-direction: column;
   gap: 1.2%;
-  width: 6.3%;
+  width: 6.4%;
   height: 27%;
 }
 
@@ -823,12 +735,14 @@ p {
   border: 0;
   border-radius: 0 12px 12px 0;
   clip-path: polygon(0 0, 90% 0, 100% 18%, 91% 50%, 100% 82%, 90% 100%, 0 100%);
-  transition: transform .18s, filter .18s;
+  transition: width .22s ease, transform .18s, filter .18s;
 }
 
+/* The tab grows to the right while its left edge stays tucked against the page,
+   so it never separates from the book. */
 .bookmark:hover,
 .bookmark.active {
-  transform: translateX(5px);
+  width: calc(100% + 16px);
   filter: brightness(1.12) drop-shadow(2px 2px 1px #54281766);
 }
 
@@ -850,12 +764,13 @@ p {
 
 .book-controls {
   position: absolute;
-  bottom: 5.8%;
+  z-index: 6;
+  bottom: 1.2%;
   left: 36%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 31%;
+  width: 28%;
 }
 
 .turn-button {
@@ -874,7 +789,7 @@ p {
 }
 
 .page-indicator {
-  color: #8b5a38;
+  color: #f5d8b8;
   font-size: 9px;
   letter-spacing: .1em;
 }
@@ -962,13 +877,9 @@ p {
 
 /* Stack the book vertically on smaller screens. */
 @media (max-width: 700px) {
-  body { padding: 7px; }
-  .app-shell {
-    min-height: calc(100vh - 14px);
-    min-height: calc(100dvh - 14px);
-    padding: 10px 8px;
-  }
-  .topbar { padding: 0 5px 8px; }
+  .app-shell { padding: 10px 8px; }
+  .topbar { padding: 0 0 8px; }
+  .brand small { display: none; }
   .topbar-note { display: none; }
   .book-stage { min-height: 0; align-items: start; padding-top: 6px; }
   .book-art {
@@ -979,9 +890,11 @@ p {
     aspect-ratio: 1 / 1.25;
     padding: 12px;
     background: none;
-    filter: none;
   }
+  .book-spine { display: none; }
   .book-art::before {
+    position: absolute;
+    content: "";
     z-index: -1;
     inset: 0;
     border: 7px solid #9c623b;
@@ -989,7 +902,6 @@ p {
     background: #70432e;
     box-shadow: inset 0 0 0 2px #d9a064, 0 8px 18px #2b160d55;
   }
-  .book-art::after { display: none; }
   .page-content {
     position: relative;
     inset: auto;
@@ -1023,20 +935,6 @@ p {
     min-height: 250px;
     padding: 22px 20px 55px;
   }
-  .page-stack { display: none; }
-  .leaf-content {
-    padding: 22px 20px 55px;
-  }
-  .page-corner {
-    bottom: 3px;
-    width: 34px;
-    height: 30px;
-    color: #704b33;
-    font-size: 20px;
-    opacity: .45;
-  }
-  .page-corner-prev { left: 3px; }
-  .page-corner-next { right: 3px; }
   .page-content h1,
   .page-content h2 { font-size: 27px; }
   .eyebrow { font-size: 9px; }
@@ -1061,7 +959,7 @@ p {
     clip-path: polygon(0 0, 100% 0, 100% 78%, 50% 100%, 0 78%);
   }
   .bookmark:hover,
-  .bookmark.active { transform: translateY(4px); }
+  .bookmark.active { width: 38px; transform: translateY(4px); }
   .book-controls {
     position: relative;
     inset: auto;
@@ -1084,3 +982,167 @@ p {
     transition-duration: .01ms !important;
   }
 }
+
+/* Decorative cream frame with swaying vines, drawn above the whole page. */
+.svg-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.site-border {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+  border: clamp(7px, .9vw, 12px) solid var(--frame-cream);
+  box-shadow: inset 0 0 0 2px #d9a66d77, inset 0 0 22px #2b160d66;
+  pointer-events: none;
+}
+
+.vine {
+  position: absolute;
+  overflow: visible;
+  fill: var(--leaf-fill);
+  stroke: var(--leaf-outline);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.vine .stem { fill: none; stroke: var(--leaf-outline); stroke-width: 4; stroke-linecap: round; }
+.vine .stem-in { fill: none; stroke: var(--leaf-fill); stroke-width: 1.8; stroke-linecap: round; }
+
+/* Each vine is placed in a corner or on the right edge, as in the reference. */
+.vine-tl { top: -6px; left: clamp(0px, .5vw, 8px); width: clamp(76px, 9.5vw, 140px); }
+.vine-tr { top: -4px; right: -4px; width: clamp(66px, 8vw, 116px); }
+.vine-mr { top: 36%; right: -4px; width: clamp(72px, 9vw, 130px); }
+.vine-br { bottom: -4px; right: -4px; width: clamp(66px, 8.5vw, 120px); }
+
+/* Slow sway for a whole vine, and a faster flutter for each leaf. */
+.sway { animation: vine-sway var(--sd, 7s) ease-in-out var(--sdl, 0s) infinite alternate; }
+
+.flutter {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: leaf-flutter var(--fs, 4.5s) ease-in-out var(--fd, 0s) infinite alternate;
+}
+
+@keyframes vine-sway {
+  from { transform: rotate(-2.4deg); }
+  to { transform: rotate(2.4deg); }
+}
+
+@keyframes leaf-flutter {
+  from { transform: rotate(-5deg); }
+  to { transform: rotate(5deg); }
+}
+
+/* Soft twinkling stars scattered on the wood. They sit behind the book. */
+.starfield {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.star {
+  position: absolute;
+  top: var(--y);
+  left: var(--x);
+  width: var(--size);
+  height: var(--size);
+  opacity: .85;
+  filter: drop-shadow(0 0 4px #f4c78f55);
+  transform: translate(-50%, -50%);
+  animation: twinkle var(--dur) ease-in-out var(--delay) infinite;
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: .25; transform: translate(-50%, -50%) scale(.72) rotate(-8deg); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.05) rotate(6deg); }
+}
+
+/* Smaller border art on phones, and no mid-edge vine. */
+@media (max-width: 700px) {
+  .vine-tl { width: 54px; }
+  .vine-tr { width: 46px; }
+  .vine-br { width: 48px; }
+  .vine-mr { display: none; }
+  .app-shell { padding: 26px 20px 16px; }
+}
+
+/* ---- Scrolling: long pages scroll inside the book so every button stays reachable. ---- */
+.book-page {
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #b67b4d transparent;
+}
+
+.doc-row { align-items: stretch; }
+
+.doc-open {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.doc-open:hover .doc-meta strong { text-decoration: underline; }
+.doc-open:focus-visible,
+.doc-delete:focus-visible { outline: 2px solid #7a3d25; outline-offset: 2px; }
+
+.doc-delete {
+  align-self: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #c28c5e;
+  border-radius: 50%;
+  color: #75462d;
+  background: #ffebd2aa;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.doc-delete:hover { color: #fff0dc; background: #865038; }
+
+/* Upload preview and review. */
+.button-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+
+.preview-panel {
+  display: grid;
+  place-items: center;
+  max-height: 150px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid #c18b5e;
+  border-radius: 6px;
+  background: #ffedda99;
+  font-size: 9px;
+}
+
+.preview-panel img { max-width: 100%; max-height: 138px; }
+.ocr-area { min-height: 90px; }
+
+/* Collection viewer: original on the left page, AI text on the right page. */
+.viewer-pane { display: flex; flex-direction: column; gap: 6px; min-height: 100%; }
+.viewer-original { width: 100%; max-height: 260px; min-height: 160px; border: 1px solid #c18b5e; border-radius: 4px; background: #fff; object-fit: contain; }
+
+.viewer-text {
+  margin: 0;
+  font: 10px/1.5 inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-bubble { overflow-wrap: anywhere; white-space: pre-wrap; }
+.send-button:disabled { opacity: .5; }
