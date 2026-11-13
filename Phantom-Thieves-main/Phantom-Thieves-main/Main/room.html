@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#6b3f2e" />
+  <title>LINAW — My Room</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" />
+  <style>
+    /* Palette shared with the book page so the room feels like the same place. */
+    :root {
+      --ink: #4a2416;
+      --wood-table: #6b3f2e;
+      --cream: #ffe4c8;
+      --logo-gold: #f4c78f;
+      --pixel-font: "Press Start 2P", ui-monospace, "Courier New", monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0;
+      padding: 16px;
+      color: var(--cream);
+      background: var(--wood-table);
+      font-family: var(--pixel-font);
+    }
+
+    .room-title {
+      margin: 0;
+      color: var(--logo-gold);
+      font-size: clamp(10px, 1.4vw, 16px);
+      letter-spacing: .12em;
+      text-shadow: 2px 2px 0 var(--ink);
+    }
+
+    .room-hint {
+      margin: 0;
+      opacity: .8;
+      font-size: clamp(7px, .8vw, 10px);
+      letter-spacing: .08em;
+    }
+
+    /* The room keeps the 16:9 shape of the artwork and fits inside the window. */
+    .room {
+      position: relative;
+      width: min(100%, calc((100vh - 120px) * 16 / 9));
+      width: min(100%, calc((100dvh - 120px) * 16 / 9));
+      aspect-ratio: 16 / 9;
+      /* Chunky pixel frame: dark wood, gold line, dark wood. */
+      border: 6px solid var(--ink);
+      box-shadow:
+        0 0 0 4px var(--logo-gold),
+        0 0 0 10px var(--ink),
+        0 18px 36px #2b160d88;
+    }
+
+    /* The art is drawn at 256 x 144 and scaled up without blurring. */
+    #roomCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /*
+      Invisible buttons laid over each piece of furniture.
+      --x, --y, --w and --h are in art pixels (out of 256 x 144).
+    */
+    .hotspot {
+      position: absolute;
+      left: calc(var(--x) / 256 * 100%);
+      top: calc(var(--y) / 144 * 100%);
+      width: calc(var(--w) / 256 * 100%);
+      height: calc(var(--h) / 144 * 100%);
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    /* Pixel-style highlight when the mouse or keyboard lands on furniture. */
+    .hotspot:hover,
+    .hotspot:focus-visible {
+      outline: 3px dashed var(--logo-gold);
+      outline-offset: 2px;
+      background: #fff3d61f;
+    }
+
+    /* Name tag that pops up above the furniture. */
+    .hotspot::after {
+      position: absolute;
+      z-index: 2;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      padding: 5px 7px;
+      border: 2px solid var(--ink);
+      color: var(--ink);
+      background: var(--cream);
+      box-shadow: 2px 2px 0 var(--ink);
+      font: clamp(6px, .7vw, 9px) var(--pixel-font);
+      white-space: nowrap;
+      content: attr(data-label);
+      opacity: 0;
+      transform: translate(-50%, 4px);
+      transition: opacity .12s steps(2), transform .12s steps(2);
+      pointer-events: none;
+    }
+
+    /* Tags for things near the top edge appear below them instead. */
+    .hotspot.tag-below::after { top: calc(100% + 8px); bottom: auto; }
+
+    .hotspot:hover::after,
+    .hotspot:focus-visible::after {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    /* A quick "boop" when something is clicked. */
+    .hotspot.is-pressed { animation: press .24s steps(3); }
+
+    @keyframes press {
+      50% { background: #fff3d655; outline-offset: 0; }
+    }
+
+    /* Small pixel message box used while the furniture actions are still placeholders. */
+    .toast {
+      position: absolute;
+      z-index: 3;
+      bottom: 6%;
+      left: 50%;
+      padding: 8px 12px;
+      border: 3px solid var(--ink);
+      color: var(--ink);
+      background: var(--cream);
+      box-shadow: 3px 3px 0 var(--ink);
+      font: clamp(7px, .8vw, 10px) var(--pixel-font);
+      opacity: 0;
+      transform: translate(-50%, 6px);
+      transition: opacity .15s steps(3), transform .15s steps(3);
+      pointer-events: none;
+    }
+
+    .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .01ms !important;
+        transition-duration: .01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1 class="room-title">MY ROOM</h1>
+
+  <main class="room" id="room">
+    <canvas id="roomCanvas" width="256" height="144" role="img"
+      aria-label="A cosy pixel-art bedroom with a bookshelf, a window, a wall clock, a bed, stairs going down and a desk with a book.">
+    </canvas>
+
+    <!-- Clickable furniture. Positions match the pixel art (256 x 144 grid). -->
+    <button class="hotspot" type="button" data-item="bookshelf" data-label="Bookshelf"
+      style="--x: 11; --y: 14; --w: 48; --h: 59" aria-label="Bookshelf"></button>
+    <button class="hotspot tag-below" type="button" data-item="window" data-label="Window"
+      style="--x: 64; --y: 10; --w: 63; --h: 39" aria-label="Window"></button>
+    <button class="hotspot tag-below" type="button" data-item="clock" data-label="Clock"
+      style="--x: 140; --y: 3; --w: 33; --h: 33" aria-label="Clock"></button>
+    <button class="hotspot" type="button" data-item="bed" data-label="Bed"
+      style="--x: 180; --y: 33; --w: 76; --h: 56" aria-label="Bed"></button>
+    <button class="hotspot" type="button" data-item="stairs" data-label="Stairs"
+      style="--x: 9; --y: 112; --w: 61; --h: 32" aria-label="Stairs going down"></button>
+    <button class="hotspot" type="button" data-item="desk" data-label="Desk"
+      style="--x: 229; --y: 95; --w: 27; --h: 49" aria-label="Desk with a book"></button>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </main>
+
+  <p class="room-hint">CLICK SOMETHING IN THE ROOM</p>
+
+  <script>
+    // ---------- Pixel-art drawing ----------
+
+    const canvas = document.getElementById("roomCanvas");
+    const ctx = canvas.getContext("2d");
+    const W = 256;
+    const H = 144;
+    const FLOOR_Y = 58; // where the wall meets the floor
+
+    // Colours taken from the reference art, warmed slightly to match the book.
+    const P = {
+      outline: "#4a2416",
+      wall: "#c6bac4", wallStripe: "#c9bdc6", wallShade: "#ad9ea9",
+      floor: "#8c5646", floorHi: "#95604f", seam: "#7a4839",
+      tile: "#9d6655", tileHi: "#a8715f",
+      woodDark: "#5a2a18", wood: "#7d4024", woodMid: "#8f5440", woodBack: "#7a4636", woodHi: "#a0603f",
+      sky: "#5f9fa0", skyLow: "#6eaeac", sun: "#ecd06a", sunHi: "#f6e39a", cloud: "#e9dcc6", cloudShade: "#d7c6ad",
+      clockFace: "#d6c0a0", clockShade: "#c3a986",
+      blanket: "#5aa58c", blanketShade: "#4a8f78", blanketHi: "#6cb69c", pillow: "#6db59e", sheet: "#ece0cc", bedWood: "#8a4a2a",
+      stairHole: "#2a1913", stairWall: "#5a2a18", step: "#4a2618", stepHi: "#6b3420",
+      chair: "#d6a454", chairHi: "#e5b968", chairShade: "#b98940",
+      desk: "#9a6252", deskHi: "#a9705f", deskShade: "#7d4b3c",
+      bookCover: "#d2bc9c", bookStrap: "#2e1c16", bookCorner: "#e3a33e",
+      shadow: "rgba(58, 24, 14, .28)"
+    };
+
+    // Fill a block of pixels.
+    function rect(x, y, w, h, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w, h);
+    }
+
+    // A filled block with a 1px outline around it.
+    function box(x, y, w, h, fill, line = P.outline) {
+      rect(x, y, w, h, line);
+      rect(x + 1, y + 1, w - 2, h - 2, fill);
+    }
+
+    // A pixel circle, drawn one row at a time so the edges stay blocky.
+    function disc(cx, cy, r, color) {
+      for (let dy = -r; dy <= r; dy++) {
+        const half = Math.floor(Math.sqrt((r + 0.5) ** 2 - dy * dy));
+        rect(cx - half, cy + dy, half * 2 + 1, 1, color);
+      }
+    }
+
+    // A pixel line (Bresenham), "size" pixels thick.
+    function line(x0, y0, x1, y1, color, size = 1) {
+      const dx = Math.abs(x1 - x0);
+      const dy = -Math.abs(y1 - y0);
+      const sx = x0 < x1 ? 1 : -1;
+      const sy = y0 < y1 ? 1 : -1;
+      let err = dx + dy;
+      for (;;) {
+        rect(x0, y0, size, size, color);
+        if (x0 === x1 && y0 === y1) break;
+        const e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+      }
+    }
+
+    // Lavender wall with faint stripes and a shadow where it meets the floor.
+    function drawWall() {
+      rect(0, 0, W, FLOOR_Y, P.wall);
+      for (let x = 0; x < W; x += 16) rect(x, 0, 8, FLOOR_Y, P.wallStripe);
+      rect(0, FLOOR_Y - 2, W, 2, P.wallShade);
+    }
+
+    // Wooden plank floor: staggered rows, alternating light tiles, and little grain marks.
+    function drawFloor() {
+      const rowH = 16;
+      const plankW = 29;
+      rect(0, FLOOR_Y, W, H - FLOOR_Y, P.floor);
+      for (let r = 0; FLOOR_Y + r * rowH < H; r++) {
+        const y = FLOOR_Y + r * rowH;
+        const offset = r % 2 ? -14 : 0;
+        for (let k = 0; offset + k * plankW < W; k++) {
+          const x = offset + k * plankW;
+          const light = (k + r) % 2 === 0;
+          rect(x, y, plankW, rowH, light ? P.tile : P.floor);
+          rect(x, y, plankW, 1, light ? P.tileHi : P.floorHi);
+          rect(x, y, 1, rowH, P.seam);
+          const g = (k * 7 + r * 5) % 11;
+          rect(x + 4 + g, y + 5 + (g % 4), 5, 1, light ? P.floor : P.seam);
+          rect(x + 14 + (g % 6), y + 10, 4, 1, light ? P.floor : P.seam);
+        }
+        rect(0, y + rowH - 1, W, 1, P.seam);
+      }
+    }
+
+    // One book standing on a shelf. "base" is the shelf's top edge.
+    function book(x, base, w, h, color, spine) {
+      rect(x, base - h, w, h, color);
+      rect(x, base - h, 1, h, spine);
+      rect(x, base - h + 2, w, 1, spine);
+    }
+
+    // Tall bookshelf in the top-left corner, filled with colourful books.
+    function drawBookshelf() {
+      rect(13, 72, 46, 2, P.shadow);
+      box(11, 14, 48, 59, P.woodMid);
+      rect(14, 18, 42, 51, P.woodBack);
+      rect(12, 15, 46, 3, P.wood);
+      rect(12, 15, 2, 57, P.wood);
+      rect(56, 15, 2, 57, P.wood);
+      rect(12, 15, 46, 1, P.woodHi);
+
+      // Shelves (the books are drawn first so the shelf boards sit in front).
+      const green = "#6fb08a", greenS = "#4f8c6b";
+      const purple = "#8c6fb0", purpleS = "#6b5190";
+      const teal = "#5fb0b0", tealS = "#468c8c";
+      const olive = "#b5b56a", oliveS = "#92924f";
+      const rose = "#a5585a", roseS = "#844143";
+
+      book(16, 29, 3, 9, green, greenS);
+      book(19, 29, 3, 10, purple, purpleS);
+      book(22, 29, 3, 9, green, greenS);
+      book(25, 29, 2, 7, teal, tealS);
+      rect(41, 26, 9, 3, olive); rect(41, 26, 9, 1, oliveS);
+
+      book(16, 43, 3, 9, teal, tealS);
+      book(19, 43, 3, 10, green, greenS);
+      book(22, 43, 3, 9, olive, oliveS);
+      box(46, 36, 7, 7, rose, roseS);
+
+      book(21, 57, 3, 9, purple, purpleS);
+      book(24, 57, 3, 10, teal, tealS);
+      // a little wooden box on the third shelf
+      box(36, 50, 10, 7, P.wood, P.woodDark);
+      rect(37, 52, 8, 1, P.woodHi);
+
+      book(16, 69, 3, 9, teal, tealS);
+      book(19, 69, 3, 8, teal, tealS);
+      book(22, 69, 2, 7, purple, purpleS);
+
+      for (const y of [29, 43, 57, 69]) {
+        rect(12, y, 46, 3, P.wood);
+        rect(12, y, 46, 1, P.woodHi);
+        rect(12, y + 3, 46, 1, P.woodDark);
+      }
+    }
+
+    // A puffy pixel cloud.
+    function cloud(x, y, scale = 1) {
+      const r = Math.max(2, Math.round(3 * scale));
+      disc(x, y + 1, r, P.cloudShade);
+      disc(x + r + 1, y - 1, r + 1, P.cloud);
+      disc(x, y, r, P.cloud);
+      disc(x + r * 2 + 2, y + 1, r, P.cloud);
+      rect(x - r, y + 1, r * 4 + 3, r, P.cloud);
+      rect(x - r, y + r, r * 4 + 3, 1, P.cloudShade);
+    }
+
+    // Window with a sunny sky. "drift" slowly slides the clouds across.
+    function drawWindow(drift) {
+      const ix = 68, iy = 12, iw = 55, ih = 30;
+      rect(ix, iy, iw, ih, P.sky);
+      rect(ix, iy + ih - 8, iw, 8, P.skyLow);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(ix, iy, iw, ih);
+      ctx.clip();
+      disc(ix + 1, iy + 6, 8, P.sun);
+      disc(ix, iy + 5, 5, P.sunHi);
+      const span = iw + 40;
+      cloud(ix + ((22 + drift) % span) - 14, iy + 10, 1.4);
+      cloud(ix + ((44 + drift * 0.6) % span) - 14, iy + 18, 0.8);
+      ctx.restore();
+
+      // Frame (2px) and the thick sill underneath.
+      rect(66, 10, 59, 2, P.outline);
+      rect(66, 42, 59, 2, P.outline);
+      rect(66, 10, 2, 34, P.outline);
+      rect(123, 10, 2, 34, P.outline);
+      rect(64, 43, 63, 7, P.outline);
+      rect(65, 44, 61, 5, P.woodDark);
+      rect(65, 44, 61, 1, "#7a3c22");
+      rect(67, 50, 59, 1, P.wallShade);
+    }
+
+    // Round wall clock between the window and the bed.
+    function drawClock() {
+      disc(157, 21, 15, P.wallShade);
+      disc(156, 19, 15, P.outline);
+      disc(156, 19, 13, P.clockFace);
+      disc(157, 20, 11, P.clockShade);
+      disc(156, 19, 11, P.clockFace);
+      // hour marks at 12, 3, 6 and 9
+      rect(156, 8, 1, 2, P.outline);
+      rect(156, 28, 1, 2, P.outline);
+      rect(145, 19, 2, 1, P.outline);
+      rect(166, 19, 2, 1, P.outline);
+      // hands (placeholder time, like the reference art)
+      line(155, 18, 150, 14, P.outline, 2);
+      line(155, 18, 163, 15, P.outline, 2);
+      rect(155, 18, 2, 2, P.woodDark);
+    }
+
+    // Bed against the right wall: headboard, green blanket, pillow and footboard.
+    function drawBed() {
+      rect(182, 84, 74, 3, P.shadow);
+      // headboard on the far right
+      box(249, 33, 8, 56, P.bedWood);
+      rect(250, 34, 1, 54, "#a35d36");
+      // pillow and the white sheet below it
+      box(240, 51, 11, 21, P.pillow);
+      rect(241, 52, 9, 2, "#82c4ae");
+      box(240, 71, 11, 13, P.sheet);
+      // blanket
+      box(187, 45, 56, 39, P.blanket);
+      rect(188, 46, 54, 2, P.blanketHi);
+      rect(188, 78, 54, 5, P.blanketShade);
+      for (let x = 192; x < 240; x += 6) rect(x, 62, 3, 1, P.blanketShade);
+      // footboard
+      box(180, 46, 11, 36, P.bedWood);
+      rect(181, 47, 2, 34, "#a35d36");
+      rect(180, 44, 11, 3, P.outline);
+    }
+
+    // Stairs going down in the bottom-left corner.
+    function drawStairs() {
+      box(9, 112, 61, 34, P.stairHole);
+      rect(10, 113, 59, 2, "#3b231a");
+      // the wall on the right of the stairwell
+      box(41, 115, 29, 31, P.stairWall);
+      rect(42, 116, 27, 1, P.stepHi);
+      // steps getting darker as they go down
+      const steps = [[33, 122, "#55301f"], [26, 128, P.step], [19, 134, "#3c2016"]];
+      for (const [x, y, c] of steps) {
+        rect(x, y, 8, H - y, c);
+        rect(x, y, 8, 1, P.stepHi);
+        rect(x, y, 1, H - y, P.outline);
+      }
+    }
+
+    // Small wooden chair beside the desk.
+    function drawChair() {
+      rect(203, 139, 21, 2, P.shadow);
+      box(203, 103, 7, 21, P.chair);
+      rect(204, 104, 1, 19, P.chairHi);
+      box(203, 121, 21, 7, P.chair);
+      rect(204, 122, 19, 1, P.chairHi);
+      rect(204, 126, 19, 1, P.chairShade);
+      rect(204, 128, 1, 12, P.outline);
+      rect(209, 128, 1, 9, P.outline);
+      rect(216, 128, 1, 9, P.outline);
+      rect(222, 128, 1, 12, P.outline);
+    }
+
+    // Desk in the bottom-right with the LINAW book lying on it.
+    function drawDesk() {
+      box(229, 95, 30, 52, P.desk);
+      rect(230, 96, 28, 2, P.deskHi);
+      rect(230, 98, 1, 46, P.deskShade);
+
+      // the book: cream cover, dark straps, orange corner guards
+      rect(237, 103, 18, 28, P.shadow);
+      box(235, 101, 18, 28, P.bookCover);
+      rect(236, 102, 16, 1, "#e4d2b4");
+      rect(236, 112, 16, 2, P.bookStrap);
+      rect(236, 118, 16, 2, P.bookStrap);
+      for (const [x, y] of [[234, 100], [249, 100], [234, 125], [249, 125]]) {
+        box(x, y, 5, 5, P.bookCorner, "#9a5a22");
+      }
+      rect(235, 111, 3, 4, P.bookCorner);
+      rect(250, 117, 3, 4, P.bookCorner);
+    }
+
+    // A faint warm glow over the whole room, the same cosy tone as the book page.
+    function drawWarmth() {
+      rect(0, 0, W, H, "rgba(255, 196, 140, .06)");
+    }
+
+    // Draw the full scene. Called once per animation step.
+    function drawRoom(drift) {
+      drawWall();
+      drawFloor();
+      drawBookshelf();
+      drawWindow(drift);
+      drawClock();
+      drawBed();
+      drawStairs();
+      drawChair();
+      drawDesk();
+      drawWarmth();
+    }
+
+    // Move the clouds one pixel at a time, a few times a second, for a retro feel.
+    function startCloudDrift() {
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      let drift = 0;
+      drawRoom(drift);
+      if (reduceMotion) return;
+      setInterval(() => {
+        drift += 1;
+        drawRoom(drift);
+      }, 260);
+    }
+
+    // ---------- Furniture clicks ----------
+
+    // Placeholders for each piece of furniture. Their real behaviour comes later.
+    const furnitureActions = {
+      bookshelf() { /* later: open the file explorer */ },
+      window() { /* later: cycle the vibe (Day, Sunny, Autumn, Winter, Night) */ },
+      clock() { /* later: show the user's local time */ },
+      bed() { /* later: close the website */ },
+      stairs() { /* later: leave the website */ },
+      desk() { /* later: open the LINAW book (Phantom.html) */ }
+    };
+
+    const toast = document.getElementById("toast");
+    let toastTimer;
+
+    // Show a short message in the room, then hide it again.
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add("is-visible");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove("is-visible"), 1600);
+    }
+
+    // Play the little press animation and run that furniture's placeholder action.
+    function onFurnitureClick(event) {
+      const button = event.currentTarget;
+      button.classList.remove("is-pressed");
+      void button.offsetWidth; // restart the animation if clicked again quickly
+      button.classList.add("is-pressed");
+      furnitureActions[button.dataset.item]?.();
+      showToast(`${button.dataset.label} · coming soon`);
+    }
+
+    document.querySelectorAll(".hotspot").forEach(button => {
+      button.addEventListener("click", onFurnitureClick);
+    });
+
+    startCloudDrift();
+  </script>
+</body>
+</html>

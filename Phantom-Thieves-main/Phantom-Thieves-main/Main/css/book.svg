@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1024 576" preserveAspectRatio="none">
+  <!-- Leather-bound book lying open: cover, gold corners, loop tab and two paper pages.
+       The gold centre strap lives in spine.svg so page turns can pass underneath it. -->
+  <defs>
+    <filter id="soft" x="-10%" y="-20%" width="120%" height="150%">
+      <feGaussianBlur stdDeviation="11" />
+    </filter>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e9b567" />
+      <stop offset="1" stop-color="#d89b4c" />
+    </linearGradient>
+
+    <!-- One gold corner guard (top-left); the other three are mirrored copies. -->
+    <g id="corner">
+      <path d="M100 62 H228 Q247 62 238 75 Q231 83 221 91 Q150 150 128 187 Q124 193 114 193 H100 Q92 193 92 185 V70 Q92 62 100 62 Z"
+            fill="url(#gold)" stroke="#b9803f" stroke-width="2" stroke-linejoin="round" />
+      <path d="M104 70 H226 M100 76 V180" fill="none" stroke="#f3cd8a" stroke-width="2" stroke-linecap="round" opacity=".8" />
+      <circle cx="112" cy="68" r="1.6" fill="#b9803f" />
+      <circle cx="170" cy="68" r="1.6" fill="#b9803f" />
+      <circle cx="98" cy="130" r="1.6" fill="#b9803f" />
+    </g>
+
+    <!-- One paper page (left); the right page is its mirror image. -->
+    <g id="page">
+      <rect x="125" y="96" width="373" height="384" fill="#ffd4a8" />
+      <!-- stacked page edges on the outer side of the paper -->
+      <path d="M498 100 H131 V476 H498" fill="none" stroke="#c99a68" stroke-width="1.3" />
+      <path d="M498 103 H137 V473 H498" fill="none" stroke="#d8ad7c" stroke-width="1.1" />
+      <path d="M498 106 H143 V470 H498" fill="none" stroke="#e3bd8f" stroke-width="1" />
+      <!-- outer paper border -->
+      <rect x="125" y="96" width="373" height="384" fill="none" stroke="#c8975f" stroke-width="1.6" />
+      <rect x="127" y="98" width="369" height="380" fill="none" stroke="#fff0d6" stroke-width="1" opacity=".8" />
+    </g>
+  </defs>
+
+  <!-- soft drop shadow on the table -->
+  <rect x="104" y="86" width="816" height="436" rx="14" fill="#25100a" opacity=".6" filter="url(#soft)" />
+
+  <!-- loop tab on the left edge of the cover -->
+  <path d="M104 262 C84 262 52 290 52 312 C52 330 62 338 76 335 C92 332 105 316 105 300 Z"
+        fill="#9a5a4a" stroke="#7b3f31" stroke-width="2.5" stroke-linejoin="round" />
+  <circle cx="69" cy="314" r="8" fill="#6b3f2e" stroke="#7b3f31" stroke-width="2" />
+
+  <!-- leather cover -->
+  <rect x="100" y="70" width="824" height="436" rx="9" fill="#9a5a4a" stroke="#7b3f31" stroke-width="2.5" />
+  <path d="M250 74 H480 M545 74 H780 M250 502 H480 M545 502 H780" fill="none" stroke="#7b3f31"
+        stroke-width="4" stroke-dasharray="2 58" opacity=".7" />
+
+  <!-- gold corner guards -->
+  <use xlink:href="#corner" href="#corner" />
+  <use xlink:href="#corner" href="#corner" transform="translate(1024 0) scale(-1 1)" />
+  <use xlink:href="#corner" href="#corner" transform="translate(0 577) scale(1 -1)" />
+  <use xlink:href="#corner" href="#corner" transform="translate(1024 577) scale(-1 -1)" />
+
+  <!-- paper pages -->
+  <use xlink:href="#page" href="#page" />
+  <use xlink:href="#page" href="#page" transform="translate(1024 0) scale(-1 1)" />
+</svg>

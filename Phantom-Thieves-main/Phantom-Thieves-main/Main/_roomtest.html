@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#6b3f2e" />
+  <title>LINAW — My Room</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" />
+  <style>
+    /* Palette shared with the book page so the room feels like the same place. */
+    :root {
+      --ink: #4a2416;
+      --wood-table: #6b3f2e;
+      --cream: #ffe4c8;
+      --logo-gold: #f4c78f;
+      --pixel-font: "Press Start 2P", ui-monospace, "Courier New", monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0;
+      padding: 16px;
+      color: var(--cream);
+      background: var(--wood-table);
+      font-family: var(--pixel-font);
+    }
+
+    .room-header {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .room-title {
+      margin: 0;
+      color: var(--logo-gold);
+      font-size: clamp(10px, 1.4vw, 16px);
+      letter-spacing: .12em;
+      text-shadow: 2px 2px 0 var(--ink);
+    }
+
+    /* Shows which vibe the window is currently set to. */
+    .vibe-badge {
+      margin: 0;
+      padding: 5px 8px;
+      border: 2px solid var(--ink);
+      color: var(--ink);
+      background: var(--logo-gold);
+      box-shadow: 2px 2px 0 var(--ink);
+      font-size: clamp(7px, .75vw, 9px);
+      letter-spacing: .08em;
+    }
+
+    .room-hint {
+      margin: 0;
+      opacity: .8;
+      font-size: clamp(7px, .8vw, 10px);
+      letter-spacing: .08em;
+    }
+
+    /* The room keeps the 16:9 shape of the artwork and fits inside the window. */
+    .room {
+      position: relative;
+      width: min(100%, calc((100vh - 120px) * 16 / 9));
+      width: min(100%, calc((100dvh - 120px) * 16 / 9));
+      aspect-ratio: 16 / 9;
+      /* Chunky pixel frame: dark wood, gold line, dark wood. */
+      border: 6px solid var(--ink);
+      box-shadow:
+        0 0 0 4px var(--logo-gold),
+        0 0 0 10px var(--ink),
+        0 18px 36px #2b160d88;
+      transition: opacity .4s steps(4);
+    }
+
+    .room.is-leaving { opacity: 0; }
+
+    /* The art is drawn at 256 x 144 and scaled up without blurring. */
+    #roomCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /*
+      Invisible buttons laid over each piece of furniture.
+      --x, --y, --w and --h are in art pixels (out of 256 x 144).
+    */
+    .hotspot {
+      position: absolute;
+      left: calc(var(--x) / 256 * 100%);
+      top: calc(var(--y) / 144 * 100%);
+      width: calc(var(--w) / 256 * 100%);
+      height: calc(var(--h) / 144 * 100%);
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    /* Pixel-style highlight when the mouse or keyboard lands on furniture. */
+    .hotspot:hover,
+    .hotspot:focus-visible {
+      outline: 3px dashed var(--logo-gold);
+      outline-offset: 2px;
+      background: #fff3d61f;
+    }
+
+    /* Name tag that pops up above the furniture. */
+    .hotspot::after {
+      position: absolute;
+      z-index: 2;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      padding: 5px 7px;
+      border: 2px solid var(--ink);
+      color: var(--ink);
+      background: var(--cream);
+      box-shadow: 2px 2px 0 var(--ink);
+      font: clamp(6px, .7vw, 9px) var(--pixel-font);
+      white-space: nowrap;
+      content: attr(data-label);
+      opacity: 0;
+      transform: translate(-50%, 4px);
+      transition: opacity .12s steps(2), transform .12s steps(2);
+      pointer-events: none;
+    }
+
+    /* Tags for things near the top edge appear below them instead. */
+    .hotspot.tag-below::after { top: calc(100% + 8px); bottom: auto; }
+
+    /* Tags for things on the right edge stay inside the room. */
+    .hotspot.tag-left::after { left: auto; right: 0; transform: translate(0, 4px); }
+
+    .hotspot:hover::after,
+    .hotspot:focus-visible::after {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    .hotspot.tag-left:hover::after,
+    .hotspot.tag-left:focus-visible::after { transform: translate(0, 0); }
+
+    /* A quick "boop" when something is clicked. */
+    .hotspot.is-pressed { animation: press .24s steps(3); }
+
+    @keyframes press {
+      50% { background: #fff3d655; outline-offset: 0; }
+    }
+
+    /* Small pixel message box for quick feedback (like the vibe changing). */
+    .toast {
+      position: absolute;
+      z-index: 3;
+      bottom: 6%;
+      left: 50%;
+      padding: 8px 12px;
+      border: 3px solid var(--ink);
+      color: var(--ink);
+      background: var(--cream);
+      box-shadow: 3px 3px 0 var(--ink);
+      font: clamp(7px, .8vw, 10px) var(--pixel-font);
+      opacity: 0;
+      transform: translate(-50%, 6px);
+      transition: opacity .15s steps(3), transform .15s steps(3);
+      pointer-events: none;
+    }
+
+    .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+    /* Hidden file input used by the bookshelf to open the computer's file picker. */
+    .file-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    /* Pixel pop-up panels (bookshelf files and the clock). */
+    .pixel-panel {
+      width: min(440px, calc(100vw - 32px));
+      padding: 20px;
+      border: 4px solid var(--ink);
+      color: var(--ink);
+      background: var(--cream);
+      box-shadow: 0 0 0 3px var(--logo-gold), 0 0 0 7px var(--ink), 8px 10px 0 7px #2b160d66;
+      font-family: var(--pixel-font);
+    }
+
+    .pixel-panel::backdrop { background: #2b160daa; }
+
+    .panel-title {
+      margin: 0 0 14px;
+      color: #8e4b30;
+      font-size: 12px;
+      letter-spacing: .12em;
+    }
+
+    .panel-note {
+      margin: 0 0 12px;
+      color: #7a5038;
+      font-size: 8px;
+      line-height: 1.8;
+    }
+
+    .file-list {
+      max-height: 220px;
+      margin: 0 0 14px;
+      padding: 0;
+      overflow: auto;
+      list-style: none;
+    }
+
+    .file-list li {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 7px 4px;
+      border-bottom: 2px dashed #c9956a;
+      font-size: 8px;
+      line-height: 1.6;
+    }
+
+    .file-list .file-name { overflow-wrap: anywhere; }
+    .file-list .file-size { flex: 0 0 auto; color: #8b6349; }
+
+    .clock-time {
+      margin: 6px 0 12px;
+      color: var(--ink);
+      font-size: clamp(18px, 4vw, 28px);
+      letter-spacing: .05em;
+    }
+
+    .clock-date { margin: 0 0 8px; font-size: 9px; line-height: 1.7; }
+    .clock-zone { margin: 0 0 16px; color: #7a5038; font-size: 8px; line-height: 1.7; }
+
+    .panel-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pixel-button {
+      padding: 9px 12px;
+      border: 3px solid var(--ink);
+      color: var(--cream);
+      background: #8e4b30;
+      box-shadow: 3px 3px 0 var(--ink);
+      font: 9px var(--pixel-font);
+      letter-spacing: .06em;
+      cursor: pointer;
+    }
+
+    .pixel-button.secondary { color: var(--ink); background: var(--logo-gold); }
+
+    .pixel-button:hover { filter: brightness(1.1); }
+    .pixel-button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+
+    .pixel-button:focus-visible,
+    .hotspot:focus-visible {
+      outline: 3px dashed var(--logo-gold);
+      outline-offset: 3px;
+    }
+
+    /* Full-screen goodbye / good-rest screens shown by the stairs and the bed. */
+    .farewell {
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      max-width: none;
+      max-height: none;
+      margin: 0;
+      padding: 24px;
+      border: 0;
+      color: var(--cream);
+      background: #2b1a2e;
+      font-family: var(--pixel-font);
+      text-align: center;
+    }
+
+    .farewell[open] {
+      display: grid;
+      place-items: center;
+      animation: farewell-in .5s steps(5);
+    }
+
+    .farewell::backdrop { background: #2b1a2e; }
+    .farewell-rest { background: #232548; }
+    .farewell-rest::backdrop { background: #232548; }
+
+    @keyframes farewell-in {
+      from { opacity: 0; }
+    }
+
+    .farewell-inner {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .farewell-icon {
+      width: 96px;
+      height: 96px;
+      image-rendering: pixelated;
+    }
+
+    .farewell h2 {
+      margin: 0;
+      color: var(--logo-gold);
+      font-size: clamp(16px, 3.4vw, 34px);
+      letter-spacing: .1em;
+      text-shadow: 3px 3px 0 var(--ink);
+    }
+
+    .farewell p {
+      max-width: 34ch;
+      margin: 0;
+      font-size: clamp(8px, 1vw, 11px);
+      line-height: 2;
+    }
+
+    .farewell .farewell-small {
+      opacity: .7;
+      font-size: clamp(7px, .8vw, 9px);
+    }
+
+    /* Little twinkling pixel stars behind the farewell text. */
+    .farewell-stars {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .farewell-stars span {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: var(--logo-gold);
+      box-shadow: 4px 0 #f4c78f55, -4px 0 #f4c78f55, 0 4px #f4c78f55, 0 -4px #f4c78f55;
+      animation: pixel-twinkle 2.4s steps(3) infinite;
+    }
+
+    @keyframes pixel-twinkle {
+      50% { opacity: .2; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+      }
+    }
+  </style>
+<script>window.__errs=[];addEventListener("error",e=>__errs.push(e.message));</script></head>
+<body>
+  <header class="room-header">
+    <h1 class="room-title">MY ROOM</h1>
+    <p class="vibe-badge" id="vibeBadge" aria-live="polite">VIBE: DAY</p>
+  </header>
+
+  <main class="room" id="room">
+    <canvas id="roomCanvas" width="256" height="144" role="img"
+      aria-label="A cosy pixel-art bedroom with a bookshelf, a window, a wall clock, a bed, stairs going down and a desk with a book.">
+    </canvas>
+
+    <!-- Clickable furniture. Positions match the pixel art (256 x 144 grid). -->
+    <button class="hotspot" type="button" data-item="bookshelf" data-label="Bookshelf · open files"
+      style="--x: 11; --y: 14; --w: 48; --h: 59" aria-label="Bookshelf: open files from your computer"></button>
+    <button class="hotspot tag-below" type="button" data-item="window" data-label="Window · Day" id="windowHotspot"
+      style="--x: 64; --y: 10; --w: 63; --h: 39" aria-label="Window: change the vibe. Current vibe: Day"></button>
+    <button class="hotspot tag-below" type="button" data-item="clock" data-label="Clock · what time is it?"
+      style="--x: 140; --y: 3; --w: 33; --h: 33" aria-label="Clock: show the current time"></button>
+    <button class="hotspot tag-left" type="button" data-item="bed" data-label="Bed · rest"
+      style="--x: 180; --y: 33; --w: 76; --h: 56" aria-label="Bed: rest and leave LINAW"></button>
+    <button class="hotspot" type="button" data-item="stairs" data-label="Stairs · leave"
+      style="--x: 9; --y: 112; --w: 61; --h: 32" aria-label="Stairs: leave LINAW"></button>
+    <button class="hotspot tag-left" type="button" data-item="desk" data-label="Desk · open the book"
+      style="--x: 229; --y: 95; --w: 27; --h: 49" aria-label="Desk: open the LINAW book"></button>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </main>
+
+  <p class="room-hint">CLICK SOMETHING IN THE ROOM</p>
+
+  <!-- Bookshelf: the browser's own file picker, which works on Windows, macOS, Linux and ChromeOS. -->
+  <input class="file-input" type="file" id="fileInput" multiple tabindex="-1" aria-hidden="true" />
+
+  <dialog class="pixel-panel" id="filesPanel" aria-labelledby="filesTitle">
+    <h2 class="panel-title" id="filesTitle">BOOKSHELF</h2>
+    <p class="panel-note" id="filesSummary"></p>
+    <ul class="file-list" id="fileList"></ul>
+    <p class="panel-note">Your files stay on your device. Nothing is uploaded.</p>
+    <div class="panel-actions">
+      <button class="pixel-button" type="button" id="pickMoreFiles">OPEN MORE</button>
+      <form method="dialog"><button class="pixel-button secondary" type="submit">CLOSE</button></form>
+    </div>
+  </dialog>
+
+  <dialog class="pixel-panel" id="clockPanel" aria-labelledby="clockTitle">
+    <h2 class="panel-title" id="clockTitle">CLOCK</h2>
+    <p class="clock-time" id="clockTime"></p>
+    <p class="clock-date" id="clockDate"></p>
+    <p class="clock-zone" id="clockZone"></p>
+    <div class="panel-actions">
+      <form method="dialog"><button class="pixel-button secondary" type="submit">CLOSE</button></form>
+    </div>
+  </dialog>
+
+  <!-- Stairs: goodbye screen. -->
+  <dialog class="farewell" id="goodbyeScreen" aria-labelledby="goodbyeTitle">
+    <div class="farewell-stars" aria-hidden="true"></div>
+    <div class="farewell-inner">
+      <canvas class="farewell-icon" id="goodbyeIcon" width="24" height="24" aria-hidden="true"></canvas>
+      <h2 id="goodbyeTitle">GOODBYE!</h2>
+      <p>Thanks for stopping by LINAW. Your room will be right here when you come back.</p>
+      <p class="farewell-small">You can close this tab now.</p>
+      <button class="pixel-button secondary" type="button" data-go-back>◀ GO BACK</button>
+    </div>
+  </dialog>
+
+  <!-- Bed: have a good rest screen. -->
+  <dialog class="farewell farewell-rest" id="restScreen" aria-labelledby="restTitle">
+    <div class="farewell-stars" aria-hidden="true"></div>
+    <div class="farewell-inner">
+      <canvas class="farewell-icon" id="restIcon" width="24" height="24" aria-hidden="true"></canvas>
+      <h2 id="restTitle">HAVE A GOOD REST</h2>
+      <p>Sweet dreams. Your papers are tucked in safely for the night.</p>
+      <p class="farewell-small">You can close this tab now.</p>
+      <button class="pixel-button secondary" type="button" data-go-back>◀ GO BACK</button>
+    </div>
+  </dialog>
+
+  <script>
+    // ---------- Pixel-art drawing ----------
+
+    const canvas = document.getElementById("roomCanvas");
+    const ctx = canvas.getContext("2d");
+    const W = 256;
+    const H = 144;
+    const FLOOR_Y = 58; // where the wall meets the floor
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // Colours taken from the reference art, warmed slightly to match the book.
+    const P = {
+      outline: "#4a2416",
+      wall: "#c6bac4", wallStripe: "#c9bdc6", wallShade: "#ad9ea9",
+      floor: "#8c5646", floorHi: "#95604f", seam: "#7a4839",
+      tile: "#9d6655", tileHi: "#a8715f",
+      woodDark: "#5a2a18", wood: "#7d4024", woodMid: "#8f5440", woodBack: "#7a4636", woodHi: "#a0603f",
+      sun: "#ecd06a", sunHi: "#f6e39a", cloud: "#e9dcc6", cloudShade: "#d7c6ad",
+      clockFace: "#d6c0a0", clockShade: "#c3a986",
+      blanket: "#5aa58c", blanketShade: "#4a8f78", blanketHi: "#6cb69c", pillow: "#6db59e", sheet: "#ece0cc", bedWood: "#8a4a2a",
+      stairHole: "#2a1913", stairWall: "#5a2a18", step: "#4a2618", stepHi: "#6b3420",
+      chair: "#d6a454", chairHi: "#e5b968", chairShade: "#b98940",
+      desk: "#9a6252", deskHi: "#a9705f", deskShade: "#7d4b3c",
+      bookCover: "#d2bc9c", bookStrap: "#2e1c16", bookCorner: "#e3a33e",
+      shadow: "rgba(58, 24, 14, .28)"
+    };
+
+    /*
+      The five vibes the window can show. Each one has:
+      - sky / skyLow: colours inside the window
+      - tint: a colour washed over the whole room. Alpha stays at or below .3,
+        so the room keeps its own look and only the mood shifts.
+      - beam: the light the window throws onto the floor (or null for none)
+    */
+    const VIBES = [
+      { id: "day", name: "Day", sky: "#5f9fa0", skyLow: "#6eaeac", tint: null, beam: "rgba(255, 244, 214, .07)" },
+      { id: "sunny", name: "Sunny", sky: "#62b2c4", skyLow: "#86c8c6", tint: "rgba(255, 210, 110, .16)", beam: "rgba(255, 232, 160, .16)" },
+      { id: "autumn", name: "Autumn", sky: "#e2a06c", skyLow: "#d7825a", tint: "rgba(222, 116, 48, .2)", beam: "rgba(255, 186, 120, .1)" },
+      { id: "winter", name: "Winter", sky: "#b4c9dc", skyLow: "#d6e2ec", tint: "rgba(168, 200, 236, .22)", beam: "rgba(232, 242, 255, .09)" },
+      { id: "night", name: "Night", sky: "#262a55", skyLow: "#343a6c", tint: "rgba(22, 24, 66, .3)", beam: "rgba(178, 196, 255, .07)" }
+    ];
+
+    // Fill a block of pixels.
+    function rect(x, y, w, h, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w, h);
+    }
+
+    // A filled block with a 1px outline around it.
+    function box(x, y, w, h, fill, line = P.outline) {
+      rect(x, y, w, h, line);
+      rect(x + 1, y + 1, w - 2, h - 2, fill);
+    }
+
+    // A pixel circle, drawn one row at a time so the edges stay blocky.
+    function disc(cx, cy, r, color) {
+      for (let dy = -r; dy <= r; dy++) {
+        const half = Math.floor(Math.sqrt((r + 0.5) ** 2 - dy * dy));
+        rect(cx - half, cy + dy, half * 2 + 1, 1, color);
+      }
+    }
+
+    // A pixel line (Bresenham), "size" pixels thick.
+    function line(x0, y0, x1, y1, color, size = 1) {
+      const dx = Math.abs(x1 - x0);
+      const dy = -Math.abs(y1 - y0);
+      const sx = x0 < x1 ? 1 : -1;
+      const sy = y0 < y1 ? 1 : -1;
+      let err = dx + dy;
+      for (;;) {
+        rect(x0, y0, size, size, color);
+        if (x0 === x1 && y0 === y1) break;
+        const e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+      }
+    }
+
+    // Lavender wall with faint stripes and a shadow where it meets the floor.
+    function drawWall() {
+      rect(0, 0, W, FLOOR_Y, P.wall);
+      for (let x = 0; x < W; x += 16) rect(x, 0, 8, FLOOR_Y, P.wallStripe);
+      rect(0, FLOOR_Y - 2, W, 2, P.wallShade);
+    }
+
+    // Wooden plank floor: staggered rows, alternating light tiles, and little grain marks.
+    function drawFloor() {
+      const rowH = 16;
+      const plankW = 29;
+      rect(0, FLOOR_Y, W, H - FLOOR_Y, P.floor);
+      for (let r = 0; FLOOR_Y + r * rowH < H; r++) {
+        const y = FLOOR_Y + r * rowH;
+        const offset = r % 2 ? -14 : 0;
+        for (let k = 0; offset + k * plankW < W; k++) {
+          const x = offset + k * plankW;
+          const light = (k + r) % 2 === 0;
+          rect(x, y, plankW, rowH, light ? P.tile : P.floor);
+          rect(x, y, plankW, 1, light ? P.tileHi : P.floorHi);
+          rect(x, y, 1, rowH, P.seam);
+          const g = (k * 7 + r * 5) % 11;
+          rect(x + 4 + g, y + 5 + (g % 4), 5, 1, light ? P.floor : P.seam);
+          rect(x + 14 + (g % 6), y + 10, 4, 1, light ? P.floor : P.seam);
+        }
+        rect(0, y + rowH - 1, W, 1, P.seam);
+      }
+    }
+
+    // Soft patch of light the window throws onto the wall and floor.
+    function drawLightBeam(vibe, tick) {
+      if (!vibe.beam) return;
+      ctx.fillStyle = vibe.beam;
+      ctx.beginPath();
+      ctx.moveTo(68, 50);
+      ctx.lineTo(123, 50);
+      ctx.lineTo(160, 112);
+      ctx.lineTo(96, 112);
+      ctx.closePath();
+      ctx.fill();
+
+      // Sunny days get a few dust motes floating in the light.
+      if (vibe.id === "sunny") {
+        for (let i = 0; i < 7; i++) {
+          const x = 90 + ((i * 23 + tick * (i % 2 ? 1 : 2)) % 50);
+          const y = 58 + ((i * 17 + Math.floor(tick / 2)) % 46);
+          rect(x, y, 1, 1, "rgba(255, 244, 200, .7)");
+        }
+      }
+    }
+
+    // One book standing on a shelf. "base" is the shelf's top edge.
+    function book(x, base, w, h, color, spine) {
+      rect(x, base - h, w, h, color);
+      rect(x, base - h, 1, h, spine);
+      rect(x, base - h + 2, w, 1, spine);
+    }
+
+    // Tall bookshelf in the top-left corner, filled with colourful books.
+    function drawBookshelf() {
+      rect(13, 72, 46, 2, P.shadow);
+      box(11, 14, 48, 59, P.woodMid);
+      rect(14, 18, 42, 51, P.woodBack);
+      rect(12, 15, 46, 3, P.wood);
+      rect(12, 15, 2, 57, P.wood);
+      rect(56, 15, 2, 57, P.wood);
+      rect(12, 15, 46, 1, P.woodHi);
+
+      // Shelves (the books are drawn first so the shelf boards sit in front).
+      const green = "#6fb08a", greenS = "#4f8c6b";
+      const purple = "#8c6fb0", purpleS = "#6b5190";
+      const teal = "#5fb0b0", tealS = "#468c8c";
+      const olive = "#b5b56a", oliveS = "#92924f";
+      const rose = "#a5585a", roseS = "#844143";
+
+      book(16, 29, 3, 9, green, greenS);
+      book(19, 29, 3, 10, purple, purpleS);
+      book(22, 29, 3, 9, green, greenS);
+      book(25, 29, 2, 7, teal, tealS);
+      rect(41, 26, 9, 3, olive); rect(41, 26, 9, 1, oliveS);
+
+      book(16, 43, 3, 9, teal, tealS);
+      book(19, 43, 3, 10, green, greenS);
+      book(22, 43, 3, 9, olive, oliveS);
+      box(46, 36, 7, 7, rose, roseS);
+
+      book(21, 57, 3, 9, purple, purpleS);
+      book(24, 57, 3, 10, teal, tealS);
+      // a little wooden box on the third shelf
+      box(36, 50, 10, 7, P.wood, P.woodDark);
+      rect(37, 52, 8, 1, P.woodHi);
+
+      book(16, 69, 3, 9, teal, tealS);
+      book(19, 69, 3, 8, teal, tealS);
+      book(22, 69, 2, 7, purple, purpleS);
+
+      for (const y of [29, 43, 57, 69]) {
+        rect(12, y, 46, 3, P.wood);
+        rect(12, y, 46, 1, P.woodHi);
+        rect(12, y + 3, 46, 1, P.woodDark);
+      }
+    }
+
+    // A puffy pixel cloud.
+    function cloud(x, y, scale = 1, fill = P.cloud, shade = P.cloudShade) {
+      const r = Math.max(2, Math.round(3 * scale));
+      disc(x, y + 1, r, shade);
+      disc(x + r + 1, y - 1, r + 1, fill);
+      disc(x, y, r, fill);
+      disc(x + r * 2 + 2, y + 1, r, fill);
+      rect(x - r, y + 1, r * 4 + 3, r, fill);
+      rect(x - r, y + r, r * 4 + 3, 1, shade);
+    }
+
+    // What you see through the window for each vibe. "tick" drives the slow animation.
+    function drawWindowScene(vibe, ix, iy, iw, ih, tick) {
+      const span = iw + 40;
+      const drift = Math.floor(tick / 2);
+
+      if (vibe.id === "day") {
+        disc(ix + 1, iy + 6, 8, P.sun);
+        disc(ix, iy + 5, 5, P.sunHi);
+        cloud(ix + ((22 + drift) % span) - 14, iy + 10, 1.4);
+        cloud(ix + ((44 + drift * 0.6) % span) - 14, iy + 18, 0.8);
+      }
+
+      if (vibe.id === "sunny") {
+        // A big bright sun with rays that blink between two lengths.
+        const long = tick % 6 < 3;
+        const cx = ix + 12, cy = iy + 11;
+        for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+          const diagonal = dx !== 0 && dy !== 0;
+          const start = diagonal ? 8 : 10;
+          const length = (long ? 4 : 2) - (diagonal ? 1 : 0);
+          for (let s = 0; s < length; s++) rect(cx + dx * (start + s), cy + dy * (start + s), 1, 1, P.sunHi);
+        }
+        disc(cx, cy, 7, P.sun);
+        disc(cx - 1, cy - 1, 4, P.sunHi);
+        cloud(ix + ((40 + drift * 0.5) % span) - 10, iy + 20, 0.7);
+      }
+
+      if (vibe.id === "autumn") {
+        // A low golden sun, a tree with orange leaves, and leaves drifting down.
+        disc(ix + 44, iy + 20, 6, "#f2c46e");
+        rect(ix, iy + ih - 4, iw, 4, "#a8643a");
+        rect(ix + 14, iy + 14, 3, ih - 14, "#6b3a22");
+        line(ix + 15, iy + 18, ix + 9, iy + 13, "#6b3a22");
+        disc(ix + 15, iy + 10, 8, "#d4693a");
+        disc(ix + 10, iy + 13, 5, "#c2552e");
+        disc(ix + 20, iy + 12, 5, "#e08a3e");
+        disc(ix + 16, iy + 7, 4, "#e7a14a");
+        const leafColors = ["#e07a3a", "#c2552e", "#e7a14a", "#b8452a"];
+        for (let i = 0; i < 9; i++) {
+          const x = ix + ((i * 13 + tick) % iw);
+          const y = iy + ((i * 7 + tick * (1 + (i % 2))) % ih);
+          const sway = Math.round(Math.sin((tick + i * 5) / 3));
+          rect(x + sway, y, 2, 1, leafColors[i % 4]);
+        }
+      }
+
+      if (vibe.id === "winter") {
+        // Pale sky, snowy ground, a little pine tree and falling snow.
+        rect(ix, iy + ih - 5, iw, 5, "#f4f7fa");
+        rect(ix, iy + ih - 5, iw, 1, "#dfe7ef");
+        const tx = ix + 40, ty = iy + 8;
+        for (let row = 0; row < 16; row++) {
+          const half = Math.floor(row / 2) + (row % 5 === 4 ? -1 : 0);
+          rect(tx - half, ty + row, half * 2 + 1, 1, row % 5 === 0 ? "#f4f7fa" : "#4f8070");
+        }
+        rect(tx - 1, ty + 16, 3, 3, "#6b3a22");
+        for (let i = 0; i < 16; i++) {
+          const x = ix + ((i * 11 + Math.floor(tick / 2)) % iw);
+          const y = iy + ((i * 9 + tick) % ih);
+          rect(x, y, 1, 1, "#ffffff");
+        }
+      }
+
+      if (vibe.id === "night") {
+        // Crescent moon, twinkling stars and a slow dark cloud.
+        disc(ix + 42, iy + 9, 6, "#f3e3b0");
+        disc(ix + 45, iy + 7, 5, vibe.sky);
+        const stars = [[6, 5], [14, 14], [24, 6], [31, 18], [9, 22], [50, 21], [20, 24], [36, 4]];
+        stars.forEach(([sx, sy], i) => {
+          const on = (tick + i * 3) % 10 < 7;
+          rect(ix + sx, iy + sy, 1, 1, on ? "#fff4cf" : "#8a8fc0");
+          if (on && i % 3 === 0) {
+            rect(ix + sx - 1, iy + sy, 3, 1, "rgba(255, 244, 207, .5)");
+            rect(ix + sx, iy + sy - 1, 1, 3, "rgba(255, 244, 207, .5)");
+          }
+        });
+        cloud(ix + ((30 + drift * 0.4) % span) - 14, iy + 20, 0.8, "#3d4378", "#30356a");
+      }
+    }
+
+    // Window with the current vibe's sky inside, plus its frame and sill.
+    function drawWindow(vibe, tick) {
+      const ix = 68, iy = 12, iw = 55, ih = 30;
+      rect(ix, iy, iw, ih, vibe.sky);
+      rect(ix, iy + ih - 8, iw, 8, vibe.skyLow);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(ix, iy, iw, ih);
+      ctx.clip();
+      drawWindowScene(vibe, ix, iy, iw, ih, tick);
+      ctx.restore();
+
+      // Frame (2px) and the thick sill underneath.
+      rect(66, 10, 59, 2, P.outline);
+      rect(66, 42, 59, 2, P.outline);
+      rect(66, 10, 2, 34, P.outline);
+      rect(123, 10, 2, 34, P.outline);
+      rect(64, 43, 63, 7, P.outline);
+      rect(65, 44, 61, 5, P.woodDark);
+      rect(65, 44, 61, 1, "#7a3c22");
+      rect(67, 50, 59, 1, P.wallShade);
+    }
+
+    // Round wall clock. Its hands show the visitor's real local time.
+    function drawClock(now) {
+      const cx = 156, cy = 19;
+      disc(cx + 1, cy + 2, 15, P.wallShade);
+      disc(cx, cy, 15, P.outline);
+      disc(cx, cy, 13, P.clockFace);
+      disc(cx + 1, cy + 1, 11, P.clockShade);
+      disc(cx, cy, 11, P.clockFace);
+      // hour marks at 12, 3, 6 and 9
+      rect(cx, cy - 11, 1, 2, P.outline);
+      rect(cx, cy + 9, 1, 2, P.outline);
+      rect(cx - 11, cy, 2, 1, P.outline);
+      rect(cx + 10, cy, 2, 1, P.outline);
+
+      const minutes = now.getMinutes() + now.getSeconds() / 60;
+      const hours = (now.getHours() % 12) + minutes / 60;
+      const minuteAngle = (minutes / 60) * Math.PI * 2;
+      const hourAngle = (hours / 12) * Math.PI * 2;
+      line(cx, cy, Math.round(cx + Math.sin(hourAngle) * 5), Math.round(cy - Math.cos(hourAngle) * 5), P.outline, 2);
+      line(cx, cy, Math.round(cx + Math.sin(minuteAngle) * 8), Math.round(cy - Math.cos(minuteAngle) * 8), P.outline, 2);
+      rect(cx, cy, 2, 2, P.woodDark);
+    }
+
+    // Bed against the right wall: headboard, green blanket, pillow and footboard.
+    function drawBed() {
+      rect(182, 84, 74, 3, P.shadow);
+      // headboard on the far right
+      box(249, 33, 8, 56, P.bedWood);
+      rect(250, 34, 1, 54, "#a35d36");
+      // pillow and the white sheet below it
+      box(240, 51, 11, 21, P.pillow);
+      rect(241, 52, 9, 2, "#82c4ae");
+      box(240, 71, 11, 13, P.sheet);
+      // blanket
+      box(187, 45, 56, 39, P.blanket);
+      rect(188, 46, 54, 2, P.blanketHi);
+      rect(188, 78, 54, 5, P.blanketShade);
+      for (let x = 192; x < 240; x += 6) rect(x, 62, 3, 1, P.blanketShade);
+      // footboard
+      box(180, 46, 11, 36, P.bedWood);
+      rect(181, 47, 2, 34, "#a35d36");
+      rect(180, 44, 11, 3, P.outline);
+    }
+
+    // Stairs going down in the bottom-left corner.
+    function drawStairs() {
+      box(9, 112, 61, 34, P.stairHole);
+      rect(10, 113, 59, 2, "#3b231a");
+      // the wall on the right of the stairwell
+      box(41, 115, 29, 31, P.stairWall);
+      rect(42, 116, 27, 1, P.stepHi);
+      // steps getting darker as they go down
+      const steps = [[33, 122, "#55301f"], [26, 128, P.step], [19, 134, "#3c2016"]];
+      for (const [x, y, c] of steps) {
+        rect(x, y, 8, H - y, c);
+        rect(x, y, 8, 1, P.stepHi);
+        rect(x, y, 1, H - y, P.outline);
+      }
+    }
+
+    // Small wooden chair beside the desk.
+    function drawChair() {
+      rect(203, 139, 21, 2, P.shadow);
+      box(203, 103, 7, 21, P.chair);
+      rect(204, 104, 1, 19, P.chairHi);
+      box(203, 121, 21, 7, P.chair);
+      rect(204, 122, 19, 1, P.chairHi);
+      rect(204, 126, 19, 1, P.chairShade);
+      rect(204, 128, 1, 12, P.outline);
+      rect(209, 128, 1, 9, P.outline);
+      rect(216, 128, 1, 9, P.outline);
+      rect(222, 128, 1, 12, P.outline);
+    }
+
+    // Desk in the bottom-right with the LINAW book lying on it.
+    function drawDesk() {
+      box(229, 95, 30, 52, P.desk);
+      rect(230, 96, 28, 2, P.deskHi);
+      rect(230, 98, 1, 46, P.deskShade);
+
+      // the book: cream cover, dark straps, orange corner guards
+      rect(237, 103, 18, 28, P.shadow);
+      box(235, 101, 18, 28, P.bookCover);
+      rect(236, 102, 16, 1, "#e4d2b4");
+      rect(236, 112, 16, 2, P.bookStrap);
+      rect(236, 118, 16, 2, P.bookStrap);
+      for (const [x, y] of [[234, 100], [249, 100], [234, 125], [249, 125]]) {
+        box(x, y, 5, 5, P.bookCorner, "#9a5a22");
+      }
+      rect(235, 111, 3, 4, P.bookCorner);
+      rect(250, 117, 3, 4, P.bookCorner);
+    }
+
+    // Wash the vibe's colour over the whole room. This is the "atmosphere" effect.
+    function drawAtmosphere(vibe) {
+      rect(0, 0, W, H, "rgba(255, 196, 140, .06)"); // the room's usual cosy warmth
+      if (vibe.tint) rect(0, 0, W, H, vibe.tint);
+    }
+
+    // Draw the full scene for one animation step.
+    function drawRoom(tick) {
+      const vibe = VIBES[vibeIndex];
+      drawWall();
+      drawFloor();
+      drawLightBeam(vibe, tick);
+      drawBookshelf();
+      drawWindow(vibe, tick);
+      drawClock(new Date());
+      drawBed();
+      drawStairs();
+      drawChair();
+      drawDesk();
+      drawAtmosphere(vibe);
+    }
+
+    // Redraw a few times a second for a retro, steppy animation.
+    // With reduced motion the room stays still and only updates for the clock.
+    let tick = 0;
+    function startRoomLoop() {
+      drawRoom(tick);
+      setInterval(() => {
+        if (document.hidden) return;
+        if (!reduceMotion) tick += 1;
+        drawRoom(tick);
+      }, reduceMotion ? 15000 : 250);
+    }
+
+    // ---------- Vibe (window) ----------
+
+    const VIBE_KEY = "linaw-room-vibe";
+    const vibeBadge = document.getElementById("vibeBadge");
+    const windowHotspot = document.getElementById("windowHotspot");
+    let vibeIndex = 0;
+
+    // Read the last vibe the visitor picked. Storage can be blocked, so fail quietly.
+    function loadVibe() {
+      try {
+        const saved = localStorage.getItem(VIBE_KEY);
+        const index = VIBES.findIndex(vibe => vibe.id === saved);
+        if (index !== -1) vibeIndex = index;
+      } catch (error) { /* storage unavailable: start on Day */ }
+    }
+
+    // Remember the chosen vibe for next time.
+    function saveVibe() {
+      try { localStorage.setItem(VIBE_KEY, VIBES[vibeIndex].id); } catch (error) { /* ignore */ }
+    }
+
+    // Update the badge and the window's label so everyone can tell which vibe is on.
+    function updateVibeLabels() {
+      const name = VIBES[vibeIndex].name;
+      vibeBadge.textContent = `VIBE: ${name.toUpperCase()}`;
+      windowHotspot.dataset.label = `Window · ${name}`;
+      windowHotspot.setAttribute("aria-label", `Window: change the vibe. Current vibe: ${name}`);
+    }
+
+    // Move on to the next vibe: Day → Sunny → Autumn → Winter → Night → Day.
+    function cycleVibe() {
+      vibeIndex = (vibeIndex + 1) % VIBES.length;
+      saveVibe();
+      updateVibeLabels();
+      drawRoom(tick);
+      showToast(`Vibe: ${VIBES[vibeIndex].name}`);
+    }
+
+    // ---------- Bookshelf (files) ----------
+
+    const fileInput = document.getElementById("fileInput");
+    const filesPanel = document.getElementById("filesPanel");
+    const fileList = document.getElementById("fileList");
+    const filesSummary = document.getElementById("filesSummary");
+
+    // Turn a byte count into something readable, like "1.2 MB".
+    function formatSize(bytes) {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    }
+
+    // Open the computer's own file picker (File Explorer on Windows, Finder on macOS, and so on).
+    function openFilePicker() {
+      fileInput.value = "";
+      fileInput.click();
+    }
+
+    // List the files the visitor picked. Names are added as text, never as HTML.
+    function showPickedFiles() {
+      const files = [...fileInput.files];
+      if (!files.length) return;
+      fileList.replaceChildren();
+      files.forEach(file => {
+        const item = document.createElement("li");
+        const name = document.createElement("span");
+        name.className = "file-name";
+        name.textContent = file.name;
+        const size = document.createElement("span");
+        size.className = "file-size";
+        size.textContent = formatSize(file.size);
+        item.append(name, size);
+        fileList.append(item);
+      });
+      filesSummary.textContent = `${files.length} file${files.length === 1 ? "" : "s"} taken off the shelf.`;
+      if (!filesPanel.open) filesPanel.showModal();
+    }
+
+    fileInput.addEventListener("change", showPickedFiles);
+    document.getElementById("pickMoreFiles").addEventListener("click", openFilePicker);
+
+    // ---------- Clock (local time) ----------
+
+    const clockPanel = document.getElementById("clockPanel");
+    const clockTime = document.getElementById("clockTime");
+    const clockDate = document.getElementById("clockDate");
+    const clockZone = document.getElementById("clockZone");
+    let clockTimer;
+
+    // Describe the visitor's timezone, for example "Asia/Manila (UTC+8)".
+    function describeTimeZone(now) {
+      const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Your local time";
+      const offsetMinutes = -now.getTimezoneOffset();
+      const sign = offsetMinutes >= 0 ? "+" : "-";
+      const hours = Math.floor(Math.abs(offsetMinutes) / 60);
+      const minutes = Math.abs(offsetMinutes) % 60;
+      const offset = `UTC${sign}${hours}${minutes ? ":" + String(minutes).padStart(2, "0") : ""}`;
+      return `${zone.replace(/_/g, " ")} (${offset})`;
+    }
+
+    // Fill the clock panel using the visitor's own clock, language and timezone.
+    function updateClockPanel() {
+      const now = new Date();
+      clockTime.textContent = now.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", second: "2-digit" });
+      clockDate.textContent = now.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      clockZone.textContent = describeTimeZone(now);
+    }
+
+    // Show the time and keep it ticking every second while the panel is open.
+    function openClock() {
+      updateClockPanel();
+      clearInterval(clockTimer);
+      clockTimer = setInterval(updateClockPanel, 1000);
+      clockPanel.showModal();
+    }
+
+    clockPanel.addEventListener("close", () => clearInterval(clockTimer));
+
+    // ---------- Bed, stairs and desk ----------
+
+    const room = document.getElementById("room");
+    const goodbyeScreen = document.getElementById("goodbyeScreen");
+    const restScreen = document.getElementById("restScreen");
+    let lastHotspot = null;
+
+    /*
+      Browsers only let a page close a tab that the page itself opened, so a normal
+      visit can't be closed by script. We show a farewell screen and also try to
+      close: if the tab was opened by LINAW it closes, otherwise the screen stays.
+    */
+    function showFarewell(screen) {
+      screen.showModal();
+      setTimeout(() => { if (screen.open) window.close(); }, 1400);
+    }
+
+    // Leave the farewell screen and return to the room.
+    function goBack(event) {
+      event.currentTarget.closest("dialog").close();
+    }
+
+    document.querySelectorAll("[data-go-back]").forEach(button => button.addEventListener("click", goBack));
+
+    // After any panel or screen closes, put keyboard focus back on the furniture that opened it.
+    document.querySelectorAll("dialog").forEach(dialog => {
+      dialog.addEventListener("close", () => lastHotspot?.focus());
+    });
+
+    // Fade the room out, then open the LINAW book (Phantom.html sits in the same folder).
+    function openBook() {
+      room.classList.add("is-leaving");
+      setTimeout(() => { window.location.href = "Phantom.html"; }, reduceMotion ? 0 : 420);
+    }
+
+    // Coming back with the browser's Back button can restore a faded room; undo that.
+    window.addEventListener("pageshow", () => room.classList.remove("is-leaving"));
+
+    // ---------- Farewell screen art ----------
+
+    // Draw a tiny pixel icon: a waving hand for goodbye, a moon for the rest screen.
+    function drawFarewellIcons() {
+      const art = {
+        goodbyeIcon: [
+          "....##..##..##......",
+          "...#oo##oo##oo#.....",
+          "...#oo#oo#oo#oo#....",
+          "...#oo#oo#oo#oo#....",
+          "...#oo#oo#oo#oo#.##.",
+          "...#oooooooooooo#oo#",
+          "...#oooooooooooo#oo#",
+          "...#ooooooooooooooo#",
+          "...#oooooooooooooo#.",
+          "....#oooooooooooo#..",
+          ".....#oooooooooo#...",
+          "......#oooooooo#....",
+          ".......########....."
+        ],
+        restIcon: [
+          ".......#####........",
+          ".....##ooooo#.......",
+          "....#oooooo#.....z..",
+          "...#oooooo#.........",
+          "..#ooooooo#....zz...",
+          "..#oooooo#.....z....",
+          "..#oooooo#.....zz...",
+          "..#ooooooo#.........",
+          "...#oooooooo#.......",
+          "....#ooooooooo####..",
+          ".....##ooooooooo#...",
+          ".......#########...."
+        ]
+      };
+      const colors = { "#": "#4a2416", o: "#f4c78f", z: "#ffe4c8" };
+      for (const [id, rows] of Object.entries(art)) {
+        const icon = document.getElementById(id);
+        const g = icon.getContext("2d");
+        icon.width = rows[0].length;
+        icon.height = rows.length;
+        icon.style.height = `${(rows.length / rows[0].length) * 96}px`;
+        rows.forEach((row, y) => [...row].forEach((cell, x) => {
+          if (!colors[cell]) return;
+          g.fillStyle = colors[cell];
+          g.fillRect(x, y, 1, 1);
+        }));
+      }
+    }
+
+    // Scatter twinkling pixel stars on both farewell screens.
+    function scatterFarewellStars() {
+      document.querySelectorAll(".farewell-stars").forEach(field => {
+        for (let i = 0; i < 18; i++) {
+          const star = document.createElement("span");
+          star.style.left = `${(i * 37) % 100}%`;
+          star.style.top = `${(i * 53 + 7) % 100}%`;
+          star.style.animationDelay = `${-(i % 6) * 0.4}s`;
+          field.append(star);
+        }
+      });
+    }
+
+    // ---------- Furniture clicks ----------
+
+    // What each piece of furniture does when it's clicked.
+    const furnitureActions = {
+      bookshelf: openFilePicker,
+      window: cycleVibe,
+      clock: openClock,
+      bed: () => showFarewell(restScreen),
+      stairs: () => showFarewell(goodbyeScreen),
+      desk: openBook
+    };
+
+    const toast = document.getElementById("toast");
+    let toastTimer;
+
+    // Show a short message in the room, then hide it again.
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add("is-visible");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove("is-visible"), 1600);
+    }
+
+    // Play the little press animation, then run that furniture's action.
+    function onFurnitureClick(event) {
+      const button = event.currentTarget;
+      lastHotspot = button;
+      button.classList.remove("is-pressed");
+      void button.offsetWidth; // restart the animation if clicked again quickly
+      button.classList.add("is-pressed");
+      furnitureActions[button.dataset.item]?.();
+    }
+
+    document.querySelectorAll(".hotspot").forEach(button => {
+      button.addEventListener("click", onFurnitureClick);
+    });
+
+    // ---------- Start ----------
+
+    loadVibe();
+    updateVibeLabels();
+    drawFarewellIcons();
+    scatterFarewellStars();
+    startRoomLoop();
+  </script>
+<script>const q=new URLSearchParams(location.search);const n=+(q.get("w")||0);for(let i=0;i<n;i++)document.querySelector("[data-item=window]").click();const c=q.get("c");if(c)document.querySelector("[data-item="+c+"]").click();setTimeout(()=>{document.title="ERRS:"+JSON.stringify(__errs)},500);</script></body>
+</html>
