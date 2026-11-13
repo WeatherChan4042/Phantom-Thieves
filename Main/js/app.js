@@ -135,7 +135,7 @@ async function getPageMarkup(index) {
   } catch (error) {
     pageMarkupCache.delete(page.name);
     console.error(error);
-    return '<p class="page-lead page-load-error" role="alert">This page could not load. Open LINAW through a local web server and try again.</p>';
+    return '<p class="page-lead page-load-error" role="alert">This page could not load. Start the LINAW server with "npm start" and open http://localhost:3000</p>';
   }
 }
 
@@ -325,7 +325,7 @@ function bindUpload() {
     let blob = selected.file;
     if (selected.mime === "application/pdf") {
       try {
-        [blob] = await pdfToImages(selected.file, 1, 1.2);
+        blob = await pdfFirstPageImage(selected.file);
       } catch (error) {
         console.error(error);
         previewPanel.textContent = "PDF ready. A preview could not be drawn.";
@@ -359,24 +359,37 @@ function bindUpload() {
 
   readButton.addEventListener("click", async () => {
     if (!selected) return;
-    readButton.disabled = true;
-    feedback.textContent = "Lumen OCR is reading your document...";
+    const cancelButton = byId("cancelUpload");
+    const setBusy = busy => {
+      readButton.disabled = busy;
+      cancelButton.disabled = busy;
+      readButton.classList.toggle("is-loading", busy);
+      readButton.textContent = busy ? "Reading..." : "Read with Lumen OCR";
+      steps.preview.setAttribute("aria-busy", String(busy));
+    };
+    setBusy(true);
+    feedback.textContent = "Lumen OCR is reading your document. This can take a few seconds...";
     let text = "";
     let note = "Review the text below. You can edit it before saving.";
     try {
-      const images = selected.mime === "application/pdf" ? await pdfToImages(selected.file, 5) : [selected.file];
-      text = await lumen.ocr(images);
+      const result = await lumen.ocr(selected.file, selected.mime);
+      text = result.text;
       if (!text) note = "Lumen found no readable text. You can type it in yourself.";
+      else if (result.status === "PARTIAL") {
+        note = `Some pages could not be read (${result.failedPages.join(", ") || "unknown"}). Review and fill in anything missing.`;
+      }
     } catch (error) {
+      if (!input.isConnected) return;
+      setBusy(false);
       if (!(error instanceof LumenError) || error.code !== "not-configured") {
         console.error(error);
         feedback.textContent = error.message || "Could not read the document. Please try again.";
-        readButton.disabled = false;
         return;
       }
       note = "Lumen OCR is not connected yet. You can type the text yourself.";
     }
     if (!input.isConnected) return; // the user turned the page meanwhile
+    setBusy(false);
     byId("ocrOutput").value = text;
     feedback.textContent = note;
     showStep("review");
@@ -605,27 +618,33 @@ function bindAssistant() {
     counter.textContent = `0 / ${MAX_CHAT_WORDS} words`;
     status.textContent = "LINAW is thinking...";
     send.disabled = true;
-    renderConversation();
+    input.disabled = true;
+    renderConversation(true);
 
     try {
-      const reply = await lumen.chat(conversation);
-      conversation.push({ role: "bot", message: reply });
-      status.textContent = "";
+      const reply = await lumen.chat(message);
+      conversation.push({ role: "bot", message: reply.answer });
+      status.textContent = reply.outOfScope
+        ? "Lumen's assistant skipped that one. Try asking it a different way, e.g. \"What does amount due mean on my bill?\""
+        : "";
     } catch (error) {
-      if (error instanceof LumenError && error.code === "not-configured") {
-        // Keep the chat blank until the API is connected.
-        conversation.pop();
+      // Take the unanswered question back out and return it to the box so it can be resent.
+      conversation.pop();
+      if (input.isConnected && !input.value) {
         input.value = message;
+        counter.textContent = `${countWords(message)} / ${MAX_CHAT_WORDS} words`;
       }
       status.textContent = error.message || "Something went wrong. Please try again.";
     }
     send.disabled = false;
+    input.disabled = false;
     renderConversation();
+    if (input.isConnected) input.focus();
   });
 }
 
 // Draw the chat bubbles and scroll to the newest message.
-function renderConversation() {
+function renderConversation(waiting = false) {
   const chat = document.getElementById("chatMessages");
   if (!chat) return;
   chat.replaceChildren();
@@ -635,6 +654,13 @@ function renderConversation() {
     bubble.textContent = message;
     chat.append(bubble);
   });
+  if (waiting) {
+    const typing = document.createElement("div");
+    typing.className = "chat-bubble bot typing";
+    typing.setAttribute("aria-label", "LINAW is typing");
+    typing.append(...[0, 1, 2].map(() => document.createElement("span")));
+    chat.append(typing);
+  }
   chat.scrollTop = chat.scrollHeight;
 }
 

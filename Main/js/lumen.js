@@ -1,92 +1,53 @@
-// The only file that talks to Lumen. It reads window.LUMEN_CONFIG (js/config.js).
-// If you change the request or response format of the Lumen API, edit the two
-// "ADAPTER" functions below and nothing else.
+// The browser side of Lumen. It only calls this app's own server (/api/ocr, /api/chat);
+// server.js adds the credentials from .env. No key or secret exists in frontend code.
 const lumen = {
-  // True once a real key and endpoint have been filled in.
-  isConfigured(kind) {
-    const config = window.LUMEN_CONFIG || {};
-    const url = kind === "chat" ? config.chatUrl : config.ocrUrl;
-    return Boolean(
-      config.apiKey && config.apiKey !== "PASTE_YOUR_KEY_HERE" &&
-      url && /^https:\/\/[^.]+\./.test(url)
-    );
+  // Send the original file to Lumen OCR. Resolves to { text, status, pageCount, failedPages }.
+  async ocr(file, mediaType) {
+    return this.request("/api/ocr", {
+      headers: { "Content-Type": mediaType, "X-Document-Name": encodeURIComponent(file.name) },
+      body: file,
+      timeoutMs: 150000 // upload + Lumen reading time
+    });
   },
 
-  headers() {
-    const config = window.LUMEN_CONFIG;
-    return { [config.authHeader || "Authorization"]: `${config.authScheme ?? "Bearer "}${config.apiKey}` };
-  },
-
-  // Send one or more page images (Blobs) to Lumen OCR and return the text it read.
-  async ocr(images) {
-    if (!this.isConfigured("ocr")) throw new LumenError("not-configured", "Lumen OCR is not connected yet.");
-    const parts = [];
-    for (let i = 0; i < images.length; i++) {
-      const response = await this.post(this.buildOcrRequest(images[i]), "ocrUrl");
-      parts.push(this.parseOcrResponse(await response.json()));
-    }
-    return parts.join("\n\n").trim();
-  },
-
-  // Send the whole conversation ([{ role: "user" | "bot", message }]) and return Lumen's reply.
-  async chat(history) {
-    if (!this.isConfigured("chat")) throw new LumenError("not-configured", "Lumen chat is not connected yet.");
-    const response = await this.post(this.buildChatRequest(history), "chatUrl");
-    return this.parseChatResponse(await response.json());
-  },
-
-  // ADAPTER: how an OCR request is built. Change the field name here if Lumen expects another.
-  buildOcrRequest(image) {
-    const form = new FormData();
-    form.append("file", image, "page.png");
-    return { body: form };
-  },
-
-  // ADAPTER: where the text sits in Lumen's OCR response.
-  parseOcrResponse(data) {
-    const text = data.text ?? data.result?.text ?? data.data?.text ?? data.ocr_text ?? data.content;
-    return typeof text === "string" ? text : "";
-  },
-
-  // ADAPTER: how a chat request is built.
-  buildChatRequest(history) {
-    const messages = history.map(({ role, message }) => ({
-      role: role === "bot" ? "assistant" : "user",
-      content: message
-    }));
-    return {
+  // Send one question. The server keeps the conversation in a Lumen session.
+  async chat(message) {
+    const result = await this.request("/api/chat", {
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages })
-    };
+      body: JSON.stringify({ message, sessionId: sessionStorage.getItem("linawChatSession") }),
+      timeoutMs: 60000
+    });
+    sessionStorage.setItem("linawChatSession", result.sessionId);
+    return { answer: result.answer, outOfScope: Boolean(result.outOfScope) };
   },
 
-  // ADAPTER: where the reply sits in Lumen's chat response.
-  parseChatResponse(data) {
-    const reply = data.choices?.[0]?.message?.content ?? data.reply ?? data.response ?? data.message ?? data.text;
-    if (typeof reply !== "string" || !reply.trim()) throw new LumenError("empty", "Lumen sent back an empty reply.");
-    return reply.trim();
-  },
-
-  async post({ headers = {}, body }, urlKey) {
+  async request(url, { headers, body, timeoutMs }) {
     let response;
     try {
-      response = await fetch(window.LUMEN_CONFIG[urlKey], {
-        method: "POST",
-        headers: { ...this.headers(), ...headers },
-        body,
-        signal: AbortSignal.timeout(60000)
-      });
+      response = await fetch(url, { method: "POST", headers, body, signal: AbortSignal.timeout(timeoutMs) });
     } catch (error) {
-      const timedOut = error.name === "TimeoutError";
-      throw new LumenError("network", timedOut ? "Lumen took too long to answer." : "Could not reach Lumen. Check your connection.");
+      throw new LumenError(
+        "network",
+        error.name === "TimeoutError" ? "Lumen took too long to answer. Please try again." : SERVER_HINT
+      );
     }
-    if (response.status === 401 || response.status === 403) {
-      throw new LumenError("auth", "Lumen rejected the API key. Check js/config.js.");
+    let data = null;
+    try { data = await response.json(); } catch { /* not JSON */ }
+    // A 404/405 without LINAW's error envelope means the page is served by something other
+    // than server.js (Live Server, a double-clicked file, ...), so /api/* does not exist.
+    if (!data?.error && (response.status === 404 || response.status === 405 || response.status === 501)) {
+      throw new LumenError("no-server", SERVER_HINT);
     }
-    if (!response.ok) throw new LumenError("server", `Lumen returned an error (${response.status}).`);
-    return response;
+    if (!response.ok) {
+      const code = data?.error?.code === "NOT_CONFIGURED" ? "not-configured" : data?.error?.code || "server";
+      throw new LumenError(code, data?.error?.message || `The request failed (${response.status}).`);
+    }
+    if (!data) throw new LumenError("server", "The server sent back an unexpected reply.");
+    return data;
   }
 };
+
+const SERVER_HINT = "Can't reach the LINAW server. Start it with \"npm start\" and open http://localhost:3000";
 
 class LumenError extends Error {
   constructor(code, message) {
@@ -95,7 +56,7 @@ class LumenError extends Error {
   }
 }
 
-// Turn a PDF (or image) File into a list of PNG Blobs, at most `maxPages` for PDFs.
+// PDF.js is used only to draw a preview of a PDF's first page in the browser.
 const PDFJS_BASE = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
 let pdfjsPromise = null;
 
@@ -119,18 +80,15 @@ function loadPdfJs() {
   return pdfjsPromise;
 }
 
-async function pdfToImages(file, maxPages = 5, scale = 2) {
+// Render the first page of a PDF to a PNG Blob for the preview panel.
+async function pdfFirstPageImage(file, scale = 1.2) {
   const pdfjs = await loadPdfJs();
   const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-  const images = [];
-  for (let n = 1; n <= Math.min(pdf.numPages, maxPages); n++) {
-    const page = await pdf.getPage(n);
-    const viewport = page.getViewport({ scale });
-    const canvas = document.createElement("canvas");
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-    images.push(await new Promise(resolve => canvas.toBlob(resolve, "image/png")));
-  }
-  return images;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+  return new Promise(resolve => canvas.toBlob(resolve, "image/png"));
 }

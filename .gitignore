@@ -1,2 +1,5 @@
-# Holds the Lumen API key. Copy Main/js/config.example.js to create it.
-Main/js/config.js
+# Lumen API credentials. Never commit.
+.env
+.env.*
+!.env.example
+node_modules/
