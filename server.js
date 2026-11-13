@@ -20,18 +20,22 @@ const OCR_MAX_BYTES = 10 * 1024 * 1024;
 const OCR_TYPES = new Set(["application/pdf", "image/png", "image/jpeg"]);
 const OCR_POLL_MS = 2000;
 const OCR_MAX_WAIT_MS = 90000;
-// Chat spec: message is 1 to 4000 characters. Each turn may take up to 25 s.
-const CHAT_MAX_CHARS = 4000;
-const CHAT_MAX_BODY = 64 * 1024;
+// The spec allows 4000 characters per message, but the instance itself refuses anything over
+// about 2000 with AI_CHAT_QUERY_TOO_LONG (measured: 1982 accepted, 2012 refused). Keep a margin.
+// Each turn may take up to 25 s.
+const CHAT_MAX_CHARS = 1900;
+// If Lumen still says too long, retry with less document text (refusals cost no credits).
+const DOC_RETRY_BUDGETS = [CHAT_MAX_CHARS, 1500, 1100];
+const CHAT_MAX_BODY = 256 * 1024;
+const MAX_DOC_CHARS = 50000; // document text a request may carry; only an excerpt is sent to Lumen
 
 // The chat instance is blank ("teams set behavior in their own messages"), so every
-// message starts with this short brief. The transcript keeps earlier turns for context.
-const CHAT_BRIEF =
-  "You are LINAW, a friendly assistant in a Filipino personal document journal app. " +
-  "Help with everyday documents such as bills, receipts, school and government forms, " +
-  "and follow-up requests about earlier answers in this conversation (for example rephrasing or translating). " +
-  "Answer in the user's language (English or Filipino). Keep answers short and clear. " +
-  "Do not give legal, medical, or financial advice.\n\nUser message: ";
+// message starts with this brief. It is kept short because the whole message must fit the limit.
+const BRIEF_CORE =
+  "You are LINAW, a friendly helper for everyday documents in the Philippines (bills, receipts, school and " +
+  "government forms), including follow-ups like rephrasing or translating. Reply in the user's language " +
+  "(English or Filipino), short and simple. No legal, medical or financial advice.";
+const CHAT_BRIEF = BRIEF_CORE + "\n\nUser message: ";
 
 // ---------- Lumen client (server only) ----------
 
@@ -94,7 +98,7 @@ function friendlyMessage(status, code) {
     RATE_LIMIT_EXCEEDED: "Too many requests. Please wait a moment and try again.",
     BURST_RATE_LIMIT_EXCEEDED: "Too many requests at once. Please wait a moment and try again.",
     AI_CHAT_MODEL_RATE_LIMITED: "The assistant is busy. Please wait a moment and try again.",
-    AI_CHAT_QUERY_TOO_LONG: "That question is too long for the assistant.",
+    AI_CHAT_QUERY_TOO_LONG: "That message is too long for Lumen's assistant. Please shorten your question.",
     AI_CHAT_QUERY_REQUIRED: "Please write a question first.",
     AI_CHAT_REPLY_TIMEOUT: "The assistant took too long to reply. Please try again.",
     AI_CHAT_MODEL_UPSTREAM_ERROR: "The assistant had a problem answering. Please try again.",
@@ -146,16 +150,73 @@ async function readDocument(bytes, mediaType, name) {
 
   const pages = await lumenFetch("ocr", `/documents/${encodeURIComponent(documentId)}/pages?IncludeWords=true`);
   const items = [...(pages?.data?.Items || [])].sort((a, b) => a.PageNumber - b.PageNumber);
-  const text = items
-    .map(page => (page.Lines || []).map(line => line.text).filter(Boolean).join("\n"))
-    .filter(Boolean)
-    .join("\n\n");
-  return {
-    text,
-    status: record.Status,
-    pageCount: record.PageCount,
-    failedPages: record.FailedPageNumbers || []
-  };
+  return { ...buildText(items), status: record.Status, pageCount: record.PageCount, failedPages: record.FailedPageNumbers || [] };
+}
+
+// Words Lumen measured below this confidence are flagged for the user to check.
+const UNSURE_BELOW = 0.85;
+const MAX_UNSURE = 100;
+
+// Join the recognised lines into plain text (lines by "\n", pages by "\n\n") and note where
+// each low-confidence word sits in that text, plus its box on the page (0-1 fractions).
+// PDFs with a text layer come back with Words only (Lines is empty), so rebuild reading-order
+// lines: group words whose vertical centres are close, then order each group left to right.
+function linesFromWords(words) {
+  const placed = (words || [])
+    .filter(word => typeof word.text === "string" && word.text && word.box && ["x", "y", "w", "h"].every(k => Number.isFinite(word.box[k])))
+    .map(word => ({ word, cy: word.box.y + word.box.h / 2, h: word.box.h }))
+    .sort((a, b) => a.cy - b.cy || a.word.box.x - b.word.box.x);
+  const groups = [];
+  for (const item of placed) {
+    const line = groups[groups.length - 1];
+    if (line && Math.abs(item.cy - line.cy) <= Math.max(item.h, line.h) * 0.5) {
+      line.items.push(item);
+      line.cy = line.items.reduce((sum, i) => sum + i.cy, 0) / line.items.length;
+      line.h = Math.max(line.h, item.h);
+    } else {
+      groups.push({ cy: item.cy, h: item.h, items: [item] });
+    }
+  }
+  return groups.map(group => {
+    const lineWords = group.items.sort((a, b) => a.word.box.x - b.word.box.x).map(i => i.word);
+    return { text: lineWords.map(word => word.text).join(" "), words: lineWords };
+  });
+}
+
+function buildText(items) {
+  let text = "";
+  const uncertain = [];
+  for (const page of items) {
+    const given = (page.Lines || []).filter(line => typeof line.text === "string" && line.text);
+    const lines = given.length ? given : linesFromWords(page.Words);
+    if (!lines.length) continue;
+    if (text) text += "\n\n";
+    lines.forEach((line, lineIndex) => {
+      if (lineIndex) text += "\n";
+      const lineStart = text.length;
+      text += line.text;
+      let cursor = 0;
+      for (const word of line.words || []) {
+        if (typeof word.text !== "string" || !word.text) continue;
+        const at = line.text.indexOf(word.text, cursor);
+        if (at === -1) continue;
+        cursor = at + word.text.length;
+        const confidence = word.confidence;
+        if (!confidence?.measured || typeof confidence.value !== "number" || confidence.value >= UNSURE_BELOW) continue;
+        if (uncertain.length >= MAX_UNSURE) continue;
+        const box = word.box && ["x", "y", "w", "h"].every(k => Number.isFinite(word.box[k])) ? word.box : null;
+        uncertain.push({
+          text: word.text,
+          confidence: Math.round(confidence.value * 100) / 100,
+          page: page.PageNumber,
+          start: lineStart + at,
+          end: lineStart + at + word.text.length,
+          box: box && { x: box.x, y: box.y, w: box.w, h: box.h }
+        });
+      }
+    });
+  }
+  return { text, uncertain };
 }
 
 // ---------- AI Chat: one instance, one session per browser tab ----------
@@ -207,20 +268,152 @@ const isOutOfScope = answer => answer.trim().toLowerCase() === OUT_OF_SCOPE_REPL
 // Sessions that are gone, archived, or owned by another key are replaced with a new one.
 const RESTART_CODES = new Set(["AI_CHAT_SESSION_NOT_FOUND", "SESSION_NOT_FOR_INSTANCE", "SESSION_NOT_OWNED", "AI_CHAT_CONFLICT", "AI_CHAT_SESSION_ID_INVALID", "AI_CHAT_BAD_REQUEST"]);
 
-async function chat(sessionId, question) {
+// Words that point at the parts of a document people usually ask about.
+const KEY_TERMS = ["total", "amount", "due", "date", "deadline", "pay", "balance", "account", "name", "period", "fee", "php", "₱"];
+const STOP_WORDS = new Set("the and for what when where which who how this that with from are was were you your yours mine have has had can could should would will about into does did not but any all its it's ang ng sa mga ko mo ba na at kung ano kailan saan".split(" "));
+const HEAD_LINES = 3; // the top of a document usually names the issuer and the document type
+
+// Pick the parts of the document that fit in `room` characters: the first lines, then the lines
+// that best match the question and the key terms, kept in their original order.
+function selectExcerpt(text, question, room) {
+  const lines = text.replace(/\r\n/g, "\n").split("\n")
+    .map(line => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    // Split very long lines (OCR of a paragraph) so they can be chosen piece by piece.
+    .flatMap(line => line.length > 300 ? line.match(/.{1,300}(?:\s|$)/g).map(part => part.trim()) : [line]);
+  const whole = lines.join("\n");
+  if (whole.length <= room) return whole;
+
+  const terms = new Set([
+    ...KEY_TERMS,
+    ...String(question).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(word => word.length >= 3 && !STOP_WORDS.has(word))
+  ]);
+  const score = line => {
+    const lower = line.toLowerCase();
+    let points = 0;
+    for (const term of terms) if (lower.includes(term)) points += 2;
+    if (/\d/.test(line)) points += 0.5;
+    return points;
+  };
+
+  const gap = "\n...\n";
+  const marker = "[excerpt]\n";
+  const chosen = new Set();
+  let used = marker.length;
+  const take = index => {
+    const cost = lines[index].length + gap.length; // worst case: a gap before every line
+    if (used + cost > room) return false;
+    chosen.add(index);
+    used += cost;
+    return true;
+  };
+  for (let i = 0; i < Math.min(HEAD_LINES, lines.length); i++) take(i);
+  lines
+    .map((line, index) => ({ index, points: score(line) }))
+    .filter(({ index }) => !chosen.has(index))
+    .sort((a, b) => b.points - a.points || a.index - b.index)
+    .forEach(({ index }) => take(index)); // lines that don't fit are skipped; shorter ones may still fit
+
+  let out = marker;
+  let previous = -1;
+  [...chosen].sort((a, b) => a - b).forEach(index => {
+    if (previous !== -1) out += index === previous + 1 ? "\n" : gap;
+    out += lines[index];
+    previous = index;
+  });
+  return out;
+}
+
+// The brief, then (optionally) an excerpt of the document being discussed, then the question.
+function buildChatMessage(question, doc, budget = CHAT_MAX_CHARS) {
+  if (!doc) return CHAT_BRIEF + question;
+  const head = `${BRIEF_CORE} The user asks about their document "${doc.title.slice(0, 60)}". OCR text (may have errors):\n<<<\n`;
+  const tail = "\n>>>\nAnswer from this text; if it is not there, say so.\n\nUser message: " + question;
+  const room = budget - head.length - tail.length;
+  if (room < 200) {
+    throw new LumenFailure(400, "AI_CHAT_QUERY_TOO_LONG", "That question is too long to send with the document. Please shorten it.");
+  }
+  return head + selectExcerpt(doc.text, question, room) + tail;
+}
+
+// Send a question; with a document, retry with a smaller excerpt if Lumen says it is too long.
+async function sendFitted(instanceId, sessionId, question, doc) {
+  const budgets = doc ? DOC_RETRY_BUDGETS : [CHAT_MAX_CHARS];
+  for (let i = 0; ; i++) {
+    try {
+      return await sendMessage(instanceId, sessionId, buildChatMessage(question, doc, budgets[i]));
+    } catch (error) {
+      if (error.code !== "AI_CHAT_QUERY_TOO_LONG" || i === budgets.length - 1) throw error;
+    }
+  }
+}
+
+async function chat(sessionId, question, doc) {
   const instanceId = await getInstanceId();
-  // The instance judges each message on its own, so every message carries the brief.
-  const message = CHAT_BRIEF + question;
+  // The instance judges each message on its own, so every message carries the brief
+  // (and the document excerpt, when the user is asking about one).
   const reply = (id, answer) => ({ sessionId: id, answer, outOfScope: isOutOfScope(answer) });
   if (sessionId) {
     try {
-      return reply(sessionId, await sendMessage(instanceId, sessionId, message));
+      return reply(sessionId, await sendFitted(instanceId, sessionId, question, doc));
     } catch (error) {
       if (!RESTART_CODES.has(error.code)) throw error;
     }
   }
   const newId = await createSession(instanceId);
-  return reply(newId, await sendMessage(instanceId, newId, message));
+  return reply(newId, await sendFitted(instanceId, newId, question, doc));
+}
+
+// ---------- Analyze: summary and key details of an OCR'd document ----------
+
+const CATEGORIES = ["Bills", "Receipts", "Personal", "School", "Government", "Other"];
+// Sent as a user question about the document (the same shape as document chat), because the
+// instance's scope filter refused a bare "extract JSON" prompt in testing but accepts this.
+// Kept short so more of the document fits in the ~2000-character message limit.
+const ANALYZE_QUESTION =
+  "Give me the key details of this document. Reply with only a JSON object with keys " +
+  `"category" (${CATEGORIES.join(", ")}), "title" (short), "issuer", "amount" (as written), ` +
+  '"dueDate" (YYYY-MM-DD), "summary" (1-2 simple sentences: what it is, what I may need to do). ' +
+  "Use null if not in the text. Never guess.";
+
+// Pull the first JSON object out of the reply and keep only well-formed fields.
+function parseDetails(answer) {
+  const start = answer.indexOf("{");
+  const end = answer.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+  let raw;
+  try { raw = JSON.parse(answer.slice(start, end + 1)); } catch { return null; }
+  if (!raw || typeof raw !== "object") return null;
+  const str = (value, max) => {
+    if (typeof value === "number" && Number.isFinite(value)) value = String(value);
+    if (typeof value !== "string") return null;
+    const clean = value.replace(/\s+/g, " ").trim();
+    return clean && !/^(null|n\/a|none|unknown)$/i.test(clean) ? clean.slice(0, max) : null;
+  };
+  let dueDate = str(raw.dueDate, 10);
+  if (dueDate && (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || Number.isNaN(Date.parse(dueDate + "T00:00:00Z")))) dueDate = null;
+  const details = {
+    category: CATEGORIES.find(c => c.toLowerCase() === String(raw.category || "").trim().toLowerCase()) || null,
+    title: str(raw.title, 80),
+    issuer: str(raw.issuer, 100),
+    amount: str(raw.amount, 40),
+    dueDate,
+    summary: str(raw.summary, 400)
+  };
+  return details.summary || details.title ? details : null;
+}
+
+async function analyzeDocument(text) {
+  const instanceId = await getInstanceId();
+  const doc = { title: "Uploaded document", text };
+  // A fresh session per document, so earlier documents cannot leak into this one.
+  const sessionId = await createSession(instanceId);
+  let answer = await sendFitted(instanceId, sessionId, ANALYZE_QUESTION, doc);
+  // The scope filter is not consistent, and this runs automatically, so retry once (5 credits).
+  if (isOutOfScope(answer)) answer = await sendFitted(instanceId, sessionId, ANALYZE_QUESTION, doc);
+  if (isOutOfScope(answer)) return { details: null, reason: "out-of-scope" };
+  const details = parseDetails(answer);
+  return details ? { details } : { details: null, reason: "unreadable" };
 }
 
 // ---------- HTTP plumbing ----------
@@ -294,9 +487,33 @@ async function handleChat(req, res) {
   const sessionId = typeof payload?.sessionId === "string" && /^[\w-]{1,100}$/.test(payload.sessionId) ? payload.sessionId : null;
   if (!message) throw new LumenFailure(400, "AI_CHAT_QUERY_REQUIRED", "Please write a question first.");
   if (CHAT_BRIEF.length + message.length > CHAT_MAX_CHARS) {
-    throw new LumenFailure(400, "AI_CHAT_QUERY_TOO_LONG", "That question is too long. Please shorten it.");
+    const max = Math.floor((CHAT_MAX_CHARS - CHAT_BRIEF.length) / 100) * 100;
+    throw new LumenFailure(400, "AI_CHAT_QUERY_TOO_LONG", `That question is too long for Lumen's assistant. Please keep it under about ${max} characters.`);
   }
-  sendJson(res, 200, await chat(sessionId, message));
+  sendJson(res, 200, await chat(sessionId, message, readDocumentField(payload?.document)));
+}
+
+// Optional { title, text } of a saved document sent along with a request.
+function readDocumentField(doc) {
+  if (doc == null) return null;
+  const text = typeof doc.text === "string" ? doc.text.trim() : "";
+  if (!text) throw new LumenFailure(400, "EMPTY_DOCUMENT", "This document has no text to talk about.");
+  if (text.length > MAX_DOC_CHARS) throw new LumenFailure(413, "DOCUMENT_TOO_LONG", "This document's text is too long.");
+  const title = typeof doc.title === "string" && doc.title.trim() ? doc.title.trim() : "Untitled document";
+  return { title, text };
+}
+
+async function handleAnalyze(req, res) {
+  lumenConfig("chat");
+  let payload;
+  try {
+    payload = JSON.parse((await readBody(req, CHAT_MAX_BODY)).toString("utf8"));
+  } catch (error) {
+    if (error instanceof LumenFailure) throw error;
+    throw new LumenFailure(400, "BAD_JSON", "The request was not valid.");
+  }
+  const doc = readDocumentField({ title: "document", text: payload?.text });
+  sendJson(res, 200, await analyzeDocument(doc.text));
 }
 
 const mimeTypes = {
@@ -313,7 +530,8 @@ function serveStatic(req, res) {
     res.writeHead(400);
     return res.end("Bad request");
   }
-  const relative = requested === "/" ? "Phantom.html" : requested;
+  // MyRoom.html is the main page; its book opens the LINAW journal (Phantom.html).
+  const relative = requested === "/" ? "MyRoom.html" : requested;
   const file = path.resolve(WEB_ROOT, "." + path.sep + relative);
   // Only files inside Main/ may be served. This blocks ../ tricks and keeps .env private.
   if (!file.startsWith(WEB_ROOT + path.sep)) {
@@ -333,6 +551,7 @@ function serveStatic(req, res) {
 const routes = {
   "POST /api/ocr": handleOcr,
   "POST /api/chat": handleChat,
+  "POST /api/analyze": handleAnalyze,
   "GET /api/status": (req, res) => {
     const has = name => Boolean(process.env[name]);
     const creds = has("LUMEN_API_KEY") && has("LUMEN_API_SECRET");

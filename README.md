@@ -14,11 +14,12 @@ Requires Node.js 20.12 or newer. No packages to install.
    npm start
    ```
 
-3. Open http://localhost:3000
+3. Open http://localhost:3000. This opens My Room (`Main/MyRoom.html`), the main page.
+   Click the book in the room to open the LINAW journal (`Main/Phantom.html`).
 
 ## How the Lumen integration works
 
-- The browser only calls this app's own server: `POST /api/ocr` and `POST /api/chat`.
+- The browser only calls this app's own server: `POST /api/ocr`, `POST /api/chat` and `POST /api/analyze`.
 - `server.js` reads the credentials from `.env` and sends them to Lumen as the
   `lumen-api-key` and `lumen-api-secret` headers. They never reach the browser.
 - OCR: upload the file (`POST /documents`), poll `GET /documents/{id}` until `READY` or

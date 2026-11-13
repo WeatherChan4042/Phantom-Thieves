@@ -10,15 +10,35 @@ const lumen = {
     });
   },
 
-  // Send one question. The server keeps the conversation in a Lumen session.
-  async chat(message) {
+  // Send one question, optionally about a saved document ({ title, text }).
+  // The server keeps the conversation in a Lumen session.
+  async chat(message, document = null) {
     const result = await this.request("/api/chat", {
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, sessionId: sessionStorage.getItem("linawChatSession") }),
+      body: JSON.stringify({
+        message,
+        sessionId: sessionStorage.getItem("linawChatSession"),
+        document: document && { title: document.title, text: document.text }
+      }),
       timeoutMs: 60000
     });
     sessionStorage.setItem("linawChatSession", result.sessionId);
     return { answer: result.answer, outOfScope: Boolean(result.outOfScope) };
+  },
+
+  // Forget the current Lumen conversation, so the next question starts a new one.
+  resetChat() {
+    sessionStorage.removeItem("linawChatSession");
+  },
+
+  // Ask Lumen for a summary and key details of OCR text.
+  // Resolves to { details: { category, title, issuer, amount, dueDate, summary } | null, reason? }.
+  async analyze(text) {
+    return this.request("/api/analyze", {
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+      timeoutMs: 90000 // session + up to two turns
+    });
   },
 
   async request(url, { headers, body, timeoutMs }) {

@@ -299,8 +299,19 @@
     }
 
     .farewell::backdrop { background: #2b1a2e; }
-    .farewell-rest { background: #232548; }
+    .farewell-rest { background: #232548; overflow-y: auto; }
     .farewell-rest::backdrop { background: #232548; }
+
+    /* Bed: the learning video, framed like a pixel TV. */
+    .learn-video {
+      width: min(86vw, 720px, calc((100dvh - 260px) * 16 / 9));
+      min-width: 240px;
+      aspect-ratio: 16 / 9;
+      border: 4px solid var(--ink);
+      box-shadow: 6px 6px 0 var(--ink);
+      background: #000;
+    }
+    .learn-video iframe { display: block; width: 100%; height: 100%; border: 0; }
 
     @keyframes farewell-in {
       from { opacity: 0; }
@@ -388,8 +399,8 @@
       style="--x: 64; --y: 10; --w: 63; --h: 39" aria-label="Window: change the vibe. Current vibe: Day"></button>
     <button class="hotspot tag-below" type="button" data-item="clock" data-label="Clock · what time is it?"
       style="--x: 140; --y: 3; --w: 33; --h: 33" aria-label="Clock: show the current time"></button>
-    <button class="hotspot tag-left" type="button" data-item="bed" data-label="Bed · rest"
-      style="--x: 180; --y: 33; --w: 76; --h: 56" aria-label="Bed: rest and leave LINAW"></button>
+    <button class="hotspot tag-left" type="button" data-item="bed" data-label="Bed · take a break"
+      style="--x: 180; --y: 33; --w: 76; --h: 56" aria-label="Bed: take a break and learn something new with a short video"></button>
     <button class="hotspot" type="button" data-item="stairs" data-label="Stairs · leave"
       style="--x: 9; --y: 112; --w: 61; --h: 32" aria-label="Stairs: leave LINAW"></button>
     <button class="hotspot tag-left" type="button" data-item="desk" data-label="Desk · open the book"
@@ -436,15 +447,18 @@
     </div>
   </dialog>
 
-  <!-- Bed: have a good rest screen. -->
-  <dialog class="farewell farewell-rest" id="restScreen" aria-labelledby="restTitle">
+  <!-- Bed: take a break and learn something new (plays one of the learning videos at random). -->
+  <dialog class="farewell farewell-rest" id="restScreen" aria-labelledby="restTitle" aria-describedby="restNote">
     <div class="farewell-stars" aria-hidden="true"></div>
     <div class="farewell-inner">
       <canvas class="farewell-icon" id="restIcon" aria-hidden="true"></canvas>
-      <h2 id="restTitle">HAVE A GOOD REST</h2>
-      <p>Sweet dreams. Your papers are tucked in safely for the night.</p>
-      <p class="farewell-small">You can close this tab now.</p>
-      <button class="pixel-button secondary" type="button" data-go-back>◀ GO BACK</button>
+      <h2 id="restTitle">TAKE A BREAK AND LEARN SOMETHING NEW</h2>
+      <div class="learn-video" id="learnVideo"></div>
+      <p class="farewell-small" id="restNote" aria-live="polite"></p>
+      <div class="panel-actions">
+        <button class="pixel-button" type="button" id="anotherVideo">ANOTHER VIDEO ▶</button>
+        <button class="pixel-button secondary" type="button" data-go-back>◀ GO BACK</button>
+      </div>
     </div>
   </dialog>
 
@@ -1010,6 +1024,47 @@
       event.currentTarget.closest("dialog").close();
     }
 
+    // ---------- Bed: take a break and learn something new ----------
+
+    // The learning videos the bed picks from (YouTube ID and title).
+    const learningVideos = [
+      { id: "0XTBYMfZyrM", title: "Do you know all 17 SDGs? (United Nations)" },
+      { id: "M-iJM02m_Hg", title: "UN Sustainable Development Goals - Overview (UNICEF Georgia)" },
+      { id: "9dWJ1A08bs0", title: "#PHgoals: Ano ang sustainable development goals o SDG? (GMA News)" },
+      { id: "e2S9wf5oVT4", title: "17 Sustainable Development Goals (ARE)" }
+    ];
+    const learnVideo = document.getElementById("learnVideo");
+    const restNote = document.getElementById("restNote");
+    let lastVideo = -1;
+
+    // Play a random video, never the same one twice in a row.
+    function playRandomVideo() {
+      let pick;
+      do { pick = Math.floor(Math.random() * learningVideos.length); }
+      while (pick === lastVideo && learningVideos.length > 1);
+      lastVideo = pick;
+
+      const frame = document.createElement("iframe");
+      // youtube-nocookie.com: YouTube's privacy-enhanced embed. Autoplay works because a click opened it.
+      const video = learningVideos[pick];
+      frame.src = `https://www.youtube-nocookie.com/embed/${video.id}?autoplay=1&rel=0&modestbranding=1`;
+      frame.title = video.title;
+      frame.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+      frame.allowFullscreen = true;
+      frame.referrerPolicy = "strict-origin-when-cross-origin";
+      learnVideo.replaceChildren(frame);
+      restNote.textContent = `NOW PLAYING: ${video.title.toUpperCase()}`;
+    }
+
+    function openLearningBreak() {
+      restScreen.showModal();
+      playRandomVideo();
+    }
+
+    document.getElementById("anotherVideo").addEventListener("click", playRandomVideo);
+    // Removing the player stops the video when the screen closes (Go back or Esc).
+    restScreen.addEventListener("close", () => learnVideo.replaceChildren());
+
     document.querySelectorAll("[data-go-back]").forEach(button => button.addEventListener("click", goBack));
 
     // After any panel or screen closes, put keyboard focus back on the furniture that opened it.
@@ -1028,7 +1083,7 @@
 
     // ---------- Farewell screen art ----------
 
-    // Draw a tiny pixel icon: a waving hand for goodbye, a sleepy moon for the rest screen.
+    // Draw a tiny pixel icon: a waving hand for goodbye, a light bulb for the learning break.
     function drawFarewellIcons() {
       const art = {
         goodbyeIcon: [
@@ -1047,21 +1102,23 @@
           ".......########....."
         ],
         restIcon: [
-          ".....#####..........",
-          "...##ooooo#....zzzz.",
-          "..#ooooo##.......z..",
-          ".#oooo##........z...",
-          ".#ooo#.........zzzz.",
-          "#oooo#..............",
-          "#ooo#.....zzz.......",
-          "#ooo#.......z.......",
-          "#ooo#......z........",
-          "#oooo#....zzz.......",
-          ".#ooo#..............",
-          ".#oooo##............",
-          "..#ooooo##..........",
-          "...##ooooo#.........",
-          ".....#####.........."
+          "z.......z.......z",
+          ".z.............z.",
+          "......#####......",
+          "....##ooooo##....",
+          "zz.#ooozzzooo#.zz",
+          "...#oozoooooo#...",
+          "..#oozoooooooo#..",
+          "..#ooooooooooo#..",
+          "..#ooooooooooo#..",
+          "...#ooooooooo#...",
+          "....#ooooooo#....",
+          ".....#ooooo#.....",
+          "......#####......",
+          "......#zzz#......",
+          "......#####......",
+          "......#zzz#......",
+          ".......###......."
         ]
       };
       const colors = { "#": "#4a2416", o: "#f4c78f", z: "#ffe4c8" };
@@ -1099,7 +1156,7 @@
       bookshelf: openFilePicker,
       window: cycleVibe,
       clock: openClock,
-      bed: () => showFarewell(restScreen),
+      bed: openLearningBreak,
       stairs: () => showFarewell(goodbyeScreen),
       desk: openBook
     };

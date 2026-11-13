@@ -1,6 +1,10 @@
 // Input checks shared by the upload, notes, and assistant pages.
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_CHAT_WORDS = 250;
+// Lumen's assistant refuses messages over ~2000 characters, and the server adds a brief
+// (and, when asking about a document, an excerpt of it). These caps keep questions inside that.
+const MAX_CHAT_CHARS = 1500;
+const MAX_DOC_CHAT_CHARS = 800;
 const MAX_NOTE_WORDS = 300;
 
 // Count words separated by any whitespace. Blank text is 0 words.

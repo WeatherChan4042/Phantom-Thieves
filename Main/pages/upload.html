@@ -20,9 +20,11 @@
 </div>
 <div id="fileFeedback" class="file-feedback" role="status" aria-live="polite" aria-atomic="true">No document selected yet.</div>
 
-<!-- Step 2: preview, then read with Lumen OCR. -->
+<!-- Shown in steps 2 and 3. Uncertain words are outlined on it after reading. -->
+<div class="preview-panel" id="previewPanel" aria-label="Document preview" hidden></div>
+
+<!-- Step 2: read with Lumen OCR. -->
 <div id="stepPreview" hidden>
-  <div class="preview-panel" id="previewPanel" aria-label="Document preview"></div>
   <div class="button-row">
     <button id="readDocument" class="paper-button primary" type="button">Read with Lumen OCR</button>
     <button id="cancelUpload" class="paper-button" type="button">Choose another</button>
@@ -31,6 +33,11 @@
 
 <!-- Step 3: review and edit what the AI read, then save. -->
 <div id="stepReview" hidden>
+  <section class="details-card" id="detailsCard" aria-live="polite" aria-label="Key details from Lumen AI"></section>
+  <div class="unsure-box" id="unsureBox" hidden>
+    <p class="field-label" id="unsureLabel"></p>
+    <div class="unsure-chips" id="unsureChips" role="group" aria-labelledby="unsureLabel"></div>
+  </div>
   <label class="field-label" for="entryTitle">Title</label>
   <input id="entryTitle" class="paper-input" maxlength="100" />
   <label class="field-label" for="categorySelect">Put it in a section</label>

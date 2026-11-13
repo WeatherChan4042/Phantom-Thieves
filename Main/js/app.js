@@ -122,6 +122,24 @@ async function updateHomeCounts() {
     const notes = entries.filter(entry => entry.type === "note").length;
     docCount.textContent = entries.length - notes;
     noteCount.textContent = notes;
+
+    // Documents with a due date from Lumen AI, today through the next 7 days.
+    const upcoming = entries
+      .filter(entry => entry.type === "document" && entry.details?.dueDate)
+      .map(entry => ({ entry, days: daysUntil(entry.details.dueDate) }))
+      .filter(({ days }) => days >= 0 && days <= 7)
+      .sort((a, b) => a.days - b.days);
+    const dueCount = document.getElementById("homeDueCount");
+    const nextDue = document.getElementById("homeNextDue");
+    if (dueCount) dueCount.textContent = upcoming.length;
+    if (nextDue) {
+      nextDue.hidden = !upcoming.length;
+      if (upcoming.length) {
+        const { entry } = upcoming[0];
+        nextDue.textContent = `Next: ${entry.title}, ${dueLabel(entry.details.dueDate)}` +
+          (entry.details.amount ? ` · ${entry.details.amount}` : "");
+      }
+    }
   } catch (error) {
     console.error(error);
   }
@@ -272,6 +290,50 @@ function bindPageInteractions(name) {
   if (name === "notes") bindNotes();
 }
 
+// ---------- Shared helpers: small elements, due dates, key-details card ----------
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+}
+
+// Whole days from today until an ISO date (YYYY-MM-DD); negative when it has passed.
+function daysUntil(iso) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((new Date(`${iso}T00:00:00`) - today) / 86400000);
+}
+
+function formatDate(iso) {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function dueLabel(iso) {
+  const days = daysUntil(iso);
+  if (days < 0) return `overdue by ${-days} day${days === -1 ? "" : "s"}`;
+  if (days === 0) return "due today";
+  if (days === 1) return "due tomorrow";
+  return `due in ${days} days`;
+}
+
+// Fill a container with the summary and key details Lumen AI found.
+function renderDetails(container, details) {
+  container.replaceChildren(el("div", "eyebrow", "KEY DETAILS · LUMEN AI"));
+  if (details.summary) container.append(el("p", "details-summary", details.summary));
+  const rows = [
+    ["From", details.issuer],
+    ["Amount", details.amount],
+    ["Due", details.dueDate && `${formatDate(details.dueDate)} (${dueLabel(details.dueDate)})`]
+  ].filter(([, value]) => value);
+  if (rows.length) {
+    const list = el("dl", "details-list");
+    rows.forEach(([label, value]) => list.append(el("dt", "", label), el("dd", "", value)));
+    container.append(list);
+  }
+  container.append(el("p", "tiny-note", "Made by AI from the OCR text. Check it against the original."));
+}
+
 // ---------- New Entry: choose, preview, read with Lumen OCR, review, save ----------
 function bindUpload() {
   const byId = id => document.getElementById(id);
@@ -281,24 +343,42 @@ function bindUpload() {
   const steps = { choose: byId("stepChoose"), preview: byId("stepPreview"), review: byId("stepReview") };
   const previewPanel = byId("previewPanel");
   const readButton = byId("readDocument");
+  const cancelButton = byId("cancelUpload");
   const saveButton = byId("saveDocument");
+  const titleInput = byId("entryTitle");
+  const categorySelect = byId("categorySelect");
+  const textArea = byId("ocrOutput");
+  const detailsCard = byId("detailsCard");
+  const unsureBox = byId("unsureBox");
   let selected = null; // { file, mime }
   let previewUrl = null;
+  let run = 0; // bumps on every new file or reset, so late replies for an old file are ignored
+  let analysis = null; // { promise, details }
+  let titleEdited = false;
+  let categoryEdited = false;
 
   function showStep(step) {
     Object.entries(steps).forEach(([key, element]) => { element.hidden = key !== step; });
+    previewPanel.hidden = step === "choose";
   }
 
   function reset(message = "No document selected yet.") {
+    run++;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = null;
     selected = null;
+    analysis = null;
     input.value = "";
     previewPanel.replaceChildren();
-    byId("ocrOutput").value = "";
-    byId("entryTitle").value = "";
+    textArea.value = "";
+    titleInput.value = "";
+    detailsCard.replaceChildren();
+    detailsCard.hidden = true;
+    unsureBox.hidden = true;
     readButton.disabled = false;
+    cancelButton.disabled = false;
     saveButton.disabled = false;
+    saveButton.textContent = "Keep and save";
     feedback.textContent = message;
     showStep("choose");
   }
@@ -311,17 +391,19 @@ function bindUpload() {
       input.value = "";
       return;
     }
+    reset();
     selected = { file, mime: result.mime };
+    titleEdited = false;
+    categoryEdited = false;
     feedback.textContent = `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MB ready.`;
-    byId("entryTitle").value = file.name.replace(/\.[^.]+$/, "").slice(0, 100);
+    titleInput.value = file.name.replace(/\.[^.]+$/, "").slice(0, 100);
     await showPreview();
     showStep("preview");
   }
 
-  // Show the original: the image itself, or the first page of a PDF.
+  // Show the original (the image, or a PDF's first page) with a layer for word outlines.
   async function showPreview() {
     previewPanel.replaceChildren();
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
     let blob = selected.file;
     if (selected.mime === "application/pdf") {
       try {
@@ -329,15 +411,95 @@ function bindUpload() {
       } catch (error) {
         console.error(error);
         previewPanel.textContent = "PDF ready. A preview could not be drawn.";
-        previewUrl = null;
         return;
       }
     }
     previewUrl = URL.createObjectURL(blob);
+    const frame = el("div", "preview-frame");
     const image = document.createElement("img");
     image.src = previewUrl;
     image.alt = `Preview of ${selected.file.name}`;
-    previewPanel.append(image);
+    frame.append(image, el("div", "preview-boxes"));
+    previewPanel.append(frame);
+  }
+
+  // Feature: list the words Lumen was unsure about and outline them on the preview.
+  function showUncertain(uncertain) {
+    const chips = byId("unsureChips");
+    const label = byId("unsureLabel");
+    const boxes = previewPanel.querySelector(".preview-boxes");
+    chips.replaceChildren();
+    if (boxes) boxes.replaceChildren();
+    unsureBox.hidden = false;
+    if (!uncertain.length) {
+      label.textContent = "Lumen was confident about every word.";
+      return;
+    }
+    label.textContent = `Lumen was unsure about ${uncertain.length} word${uncertain.length === 1 ? "" : "s"}. Tap one to check it:`;
+    uncertain.forEach((word, index) => {
+      // Outline on the preview; the preview only shows page 1.
+      let outline = null;
+      if (boxes && word.page === 1 && word.box) {
+        outline = el("span", "word-box");
+        Object.assign(outline.style, {
+          left: `${word.box.x * 100}%`, top: `${word.box.y * 100}%`,
+          width: `${word.box.w * 100}%`, height: `${word.box.h * 100}%`
+        });
+        boxes.append(outline);
+      }
+      const chip = el("button", "unsure-chip", word.text);
+      chip.type = "button";
+      const sure = `${Math.round(word.confidence * 100)}% sure`;
+      chip.title = `${sure} · page ${word.page}`;
+      chip.setAttribute("aria-label", `${word.text}, ${sure}, page ${word.page}. Select it in the text.`);
+      chip.addEventListener("click", () => {
+        previewPanel.querySelectorAll(".word-box.active").forEach(box => box.classList.remove("active"));
+        if (outline) {
+          outline.classList.add("active");
+          outline.scrollIntoView({ block: "nearest", inline: "nearest" });
+        }
+        // Use the saved position if the text there is unchanged, otherwise find the word.
+        let start = textArea.value.slice(word.start, word.end) === word.text ? word.start : textArea.value.indexOf(word.text);
+        if (start === -1) {
+          feedback.textContent = `"${word.text}" is no longer in the text.`;
+          return;
+        }
+        textArea.focus();
+        textArea.setSelectionRange(start, start + word.text.length);
+        chips.querySelectorAll(".unsure-chip").forEach((other, i) => other.classList.toggle("active", i === index));
+      });
+      chips.append(chip);
+    });
+  }
+
+  // Feature: ask Lumen AI for a summary and key details; fill in the title and section.
+  function startAnalysis(text, thisRun) {
+    detailsCard.hidden = false;
+    detailsCard.replaceChildren(el("div", "eyebrow", "KEY DETAILS · LUMEN AI"), el("p", "details-loading", "Lumen AI is summarizing this document..."));
+    detailsCard.setAttribute("aria-busy", "true");
+    const state = { details: null };
+    state.promise = lumen.analyze(text).then(result => {
+      if (thisRun !== run) return;
+      state.details = result.details;
+      if (!result.details) {
+        detailsCard.replaceChildren(el("div", "eyebrow", "KEY DETAILS · LUMEN AI"),
+          el("p", "tiny-note", "Lumen AI couldn't summarize this one. You can still review and save the text."));
+        return;
+      }
+      renderDetails(detailsCard, result.details);
+      const filled = [];
+      if (!titleEdited && result.details.title) { titleInput.value = result.details.title.slice(0, 100); filled.push("title"); }
+      if (!categoryEdited && result.details.category) { categorySelect.value = result.details.category; filled.push("section"); }
+      if (filled.length) feedback.textContent = `Lumen filled in the ${filled.join(" and ")}. Change anything that looks wrong, then save.`;
+    }).catch(error => {
+      if (thisRun !== run) return;
+      console.error(error);
+      detailsCard.replaceChildren(el("div", "eyebrow", "KEY DETAILS · LUMEN AI"),
+        el("p", "tiny-note", `No summary: ${error.message || "Lumen AI is unavailable."} You can still save the text.`));
+    }).finally(() => {
+      if (thisRun === run) detailsCard.removeAttribute("aria-busy");
+    });
+    return state;
   }
 
   input.addEventListener("change", () => chooseFile(input.files[0]));
@@ -354,12 +516,14 @@ function bindUpload() {
     zone.classList.remove("dragover");
     chooseFile(event.dataTransfer.files[0]);
   });
-  byId("cancelUpload").addEventListener("click", () => reset());
+  titleInput.addEventListener("input", () => { titleEdited = true; });
+  categorySelect.addEventListener("change", () => { categoryEdited = true; });
+  cancelButton.addEventListener("click", () => reset());
   byId("discardDocument").addEventListener("click", () => reset("Discarded. Nothing was saved."));
 
   readButton.addEventListener("click", async () => {
     if (!selected) return;
-    const cancelButton = byId("cancelUpload");
+    const thisRun = run;
     const setBusy = busy => {
       readButton.disabled = busy;
       cancelButton.disabled = busy;
@@ -369,17 +533,16 @@ function bindUpload() {
     };
     setBusy(true);
     feedback.textContent = "Lumen OCR is reading your document. This can take a few seconds...";
-    let text = "";
+    let result = { text: "", uncertain: [] };
     let note = "Review the text below. You can edit it before saving.";
     try {
-      const result = await lumen.ocr(selected.file, selected.mime);
-      text = result.text;
-      if (!text) note = "Lumen found no readable text. You can type it in yourself.";
+      result = await lumen.ocr(selected.file, selected.mime);
+      if (!result.text) note = "Lumen found no readable text. You can type it in yourself.";
       else if (result.status === "PARTIAL") {
         note = `Some pages could not be read (${result.failedPages.join(", ") || "unknown"}). Review and fill in anything missing.`;
       }
     } catch (error) {
-      if (!input.isConnected) return;
+      if (!input.isConnected || thisRun !== run) return;
       setBusy(false);
       if (!(error instanceof LumenError) || error.code !== "not-configured") {
         console.error(error);
@@ -388,38 +551,50 @@ function bindUpload() {
       }
       note = "Lumen OCR is not connected yet. You can type the text yourself.";
     }
-    if (!input.isConnected) return; // the user turned the page meanwhile
+    if (!input.isConnected || thisRun !== run) return; // the user turned the page or picked another file
     setBusy(false);
-    byId("ocrOutput").value = text;
+    textArea.value = result.text;
     feedback.textContent = note;
     showStep("review");
+    if (result.text) {
+      showUncertain(result.uncertain || []);
+      analysis = startAnalysis(result.text, thisRun);
+    }
   });
 
   saveButton.addEventListener("click", async () => {
     if (!selected) return;
-    const title = byId("entryTitle").value.trim();
+    const title = titleInput.value.trim();
     if (!title) {
       feedback.textContent = "Please give this entry a title.";
-      byId("entryTitle").focus();
+      titleInput.focus();
       return;
     }
     saveButton.disabled = true;
+    // Keep the summary with the entry: wait for it if Lumen is still working.
+    if (analysis && !analysis.details) {
+      saveButton.textContent = "Finishing summary...";
+      await analysis.promise;
+    }
     try {
       await store.add({
         type: "document",
         title,
-        category: byId("categorySelect").value,
+        category: categorySelect.value,
         mime: selected.mime,
         size: selected.file.size,
         fileBlob: selected.file,
-        ocrText: byId("ocrOutput").value
+        ocrText: textArea.value,
+        details: analysis?.details || null
       });
     } catch (error) {
       console.error(error);
       feedback.textContent = "Could not save this entry in your browser. Please try again.";
       saveButton.disabled = false;
+      saveButton.textContent = "Keep and save";
       return;
     }
+    if (!input.isConnected) return;
     reset();
     goTo("collection");
   });
@@ -471,7 +646,7 @@ async function renderDocuments() {
   const matches = entries.filter(entry =>
     (activeFilter === "All" ||
       (activeFilter === "Notes" ? entry.type === "note" : entry.type === "document" && entry.category === activeFilter)) &&
-    `${entry.title} ${entry.ocrText}`.toLowerCase().includes(query)
+    `${entry.title} ${entry.ocrText} ${entry.details?.summary || ""} ${entry.details?.issuer || ""}`.toLowerCase().includes(query)
   );
 
   list.replaceChildren();
@@ -502,7 +677,8 @@ async function renderDocuments() {
     title.textContent = entry.title;
     const detail = document.createElement("small");
     const label = entry.type === "note" ? "Note" : entry.category;
-    detail.textContent = `${label} · ${new Date(entry.createdAt).toLocaleDateString()}`;
+    const due = entry.type === "document" && entry.details?.dueDate ? ` · ${dueLabel(entry.details.dueDate)}` : "";
+    detail.textContent = `${label} · ${new Date(entry.createdAt).toLocaleDateString()}${due}`;
     meta.append(title, detail);
     open.append(icon, meta);
     open.addEventListener("click", () => openViewer(entry));
@@ -569,15 +745,65 @@ function openViewer(entry) {
   rightLabel.textContent = entry.type === "note" ? "NOTE TEXT" : "READ BY LUMEN OCR";
   const heading = document.createElement("h2");
   heading.textContent = entry.title;
+  right.append(back, rightLabel, heading);
+
+  if (entry.details) {
+    const card = el("section", "details-card");
+    card.setAttribute("aria-label", "Key details from Lumen AI");
+    renderDetails(card, entry.details);
+    right.append(card);
+  }
+
+  const actions = el("div", "button-row");
+  const actionFeedback = el("p", "tiny-note");
+  actionFeedback.setAttribute("role", "status");
+  actionFeedback.setAttribute("aria-live", "polite");
+  if (entry.ocrText && entry.ocrText.trim()) {
+    const ask = el("button", "paper-button primary", "Ask LINAW about this");
+    ask.type = "button";
+    ask.addEventListener("click", () => {
+      setChatDocument({ id: entry.id, title: entry.title, text: entry.ocrText });
+      goTo("assistant");
+    });
+    actions.append(ask);
+  }
+  if (entry.details?.dueDate) {
+    const remind = el("button", "paper-button", "Remind me");
+    remind.type = "button";
+    remind.addEventListener("click", async () => {
+      remind.disabled = true;
+      try {
+        actionFeedback.textContent = await addDueReminder(entry);
+      } catch (error) {
+        console.error(error);
+        actionFeedback.textContent = "Could not save the reminder. Please try again.";
+        remind.disabled = false;
+      }
+    });
+    actions.append(remind);
+  }
+  if (actions.children.length) right.append(actions, actionFeedback);
+
   const text = document.createElement("pre");
   text.className = "viewer-text";
   text.textContent = entry.ocrText || "No text was saved for this entry.";
-  right.append(back, rightLabel, heading, text);
+  right.append(text);
 
   leftPage.replaceChildren(left);
   rightPage.replaceChildren(right);
   right.scrollIntoView({ block: "start" });
   back.focus();
+}
+
+// Save a note reminding the user of a document's due date (once per document).
+async function addDueReminder(entry) {
+  const existing = (await store.all()).find(item => item.type === "note" && item.sourceId === entry.id);
+  if (existing) return "This reminder is already in your notes.";
+  const { dueDate, amount, issuer } = entry.details;
+  const body = `${entry.title} is ${dueLabel(dueDate)} (${formatDate(dueDate)}).` +
+    (amount ? ` Amount: ${amount}.` : "") + (issuer ? ` From ${issuer}.` : "");
+  await store.add({ type: "note", title: `Pay: ${entry.title}`.slice(0, 100), category: "Notes", ocrText: body, dueDate, sourceId: entry.id });
+  return "Reminder saved in your notes. Your home page shows what's due soon.";
 }
 
 // Put the collection list back where the viewer was.
@@ -591,6 +817,46 @@ async function closeViewer() {
 }
 
 // ---------- Ask LINAW ----------
+// The saved document the chat is about ({ id, title, text }), or null for general questions.
+let chatDocument = null;
+
+// Switching to a different document (or back to none) starts a fresh conversation,
+// so answers about one document never mix with another.
+function setChatDocument(doc) {
+  if ((chatDocument?.id ?? null) !== (doc?.id ?? null)) {
+    conversation.length = 0;
+    lumen.resetChat();
+  }
+  chatDocument = doc;
+}
+
+function renderChatContext() {
+  const bar = document.getElementById("chatContext");
+  if (!bar) return;
+  bar.hidden = !chatDocument;
+  document.getElementById("chatContextTitle").textContent = chatDocument?.title || "";
+  const input = document.getElementById("chatInput");
+  input.placeholder = chatDocument ? "Ask about this document, e.g. When is this due?" : "Write a question...";
+  input.maxLength = chatCharCap();
+  updateChatCounter();
+}
+
+// A question about a document leaves room in Lumen's message for the document excerpt.
+function chatCharCap() {
+  return chatDocument ? MAX_DOC_CHAT_CHARS : MAX_CHAT_CHARS;
+}
+
+// Words always; characters too once the question gets close to the character cap.
+function updateChatCounter() {
+  const input = document.getElementById("chatInput");
+  const counter = document.getElementById("chatCounter");
+  if (!input || !counter) return;
+  const cap = chatCharCap();
+  const chars = input.value.length;
+  counter.textContent = `${countWords(input.value)} / ${MAX_CHAT_WORDS} words` +
+    (chars >= cap * 0.75 ? ` · ${chars} / ${cap} characters` : "");
+}
+
 function bindAssistant() {
   const form = document.getElementById("chatForm");
   const input = document.getElementById("chatInput");
@@ -598,9 +864,20 @@ function bindAssistant() {
   const status = document.getElementById("chatStatus");
   const send = document.getElementById("chatSend");
 
+  renderChatContext();
+  document.getElementById("chatContextClear").addEventListener("click", () => {
+    setChatDocument(null);
+    renderChatContext();
+    renderConversation();
+    status.textContent = "Now asking general questions. The previous conversation was cleared.";
+    input.focus();
+  });
+
   input.addEventListener("input", () => {
     if (countWords(input.value) > MAX_CHAT_WORDS) input.value = limitWords(input.value, MAX_CHAT_WORDS);
-    counter.textContent = `${countWords(input.value)} / ${MAX_CHAT_WORDS} words`;
+    const cap = chatCharCap();
+    if (input.value.length > cap) input.value = input.value.slice(0, cap);
+    updateChatCounter();
     status.textContent = "";
   });
 
@@ -612,17 +889,24 @@ function bindAssistant() {
       status.textContent = `Please keep your question to ${MAX_CHAT_WORDS} words.`;
       return;
     }
+    if (message.length > chatCharCap()) {
+      status.textContent = chatDocument
+        ? `With a document attached, questions can be up to ${MAX_DOC_CHAT_CHARS} characters.`
+        : `Please keep your question to ${MAX_CHAT_CHARS} characters.`;
+      return;
+    }
 
     conversation.push({ role: "user", message });
     input.value = "";
-    counter.textContent = `0 / ${MAX_CHAT_WORDS} words`;
+    updateChatCounter();
     status.textContent = "LINAW is thinking...";
     send.disabled = true;
     input.disabled = true;
+    document.getElementById("chatContextClear").disabled = true;
     renderConversation(true);
 
     try {
-      const reply = await lumen.chat(message);
+      const reply = await lumen.chat(message, chatDocument);
       conversation.push({ role: "bot", message: reply.answer });
       status.textContent = reply.outOfScope
         ? "Lumen's assistant skipped that one. Try asking it a different way, e.g. \"What does amount due mean on my bill?\""
@@ -632,12 +916,14 @@ function bindAssistant() {
       conversation.pop();
       if (input.isConnected && !input.value) {
         input.value = message;
-        counter.textContent = `${countWords(message)} / ${MAX_CHAT_WORDS} words`;
+        updateChatCounter();
       }
       status.textContent = error.message || "Something went wrong. Please try again.";
     }
     send.disabled = false;
     input.disabled = false;
+    const clearButton = document.getElementById("chatContextClear");
+    if (clearButton) clearButton.disabled = false;
     renderConversation();
     if (input.isConnected) input.focus();
   });
@@ -713,10 +999,7 @@ function goTo(pageName) {
 }
 
 // Connect the shared controls once; page-specific controls are bound after loading.
-document.querySelector(".brand").addEventListener("click", event => {
-  event.preventDefault();
-  goTo("home");
-});
+// (The LINAW logo is a plain link back to My Room, so it needs no handler here.)
 bookmarks.forEach(button => button.addEventListener("click", () => goTo(button.dataset.page)));
 prevButton.addEventListener("click", () => renderPage(currentPage - 1));
 nextButton.addEventListener("click", () => renderPage(currentPage + 1));
