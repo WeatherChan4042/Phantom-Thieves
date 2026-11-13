@@ -1,0 +1,18 @@
+<!-- Collection page content loaded into the book. -->
+<div class="eyebrow">YOUR ARCHIVE</div>
+<h2>My collection</h2>
+<p class="page-lead">A tidy little place for the papers that matter.</p>
+<label class="search-box">
+  <span>⌕</span>
+  <input id="searchInput" type="search" maxlength="100" aria-label="Search collection" placeholder="Find a document..." />
+</label>
+<div class="category-row" role="group" aria-label="Filter documents by category">
+  <button class="filter-chip active" type="button" data-filter="All" aria-pressed="true">All</button>
+  <button class="filter-chip" type="button" data-filter="Bills" aria-pressed="false">Bills</button>
+  <button class="filter-chip" type="button" data-filter="Receipts" aria-pressed="false">Receipts</button>
+  <button class="filter-chip" type="button" data-filter="Personal" aria-pressed="false">Personal</button>
+  <button class="filter-chip" type="button" data-filter="School" aria-pressed="false">School</button>
+  <button class="filter-chip" type="button" data-filter="Government" aria-pressed="false">Government</button>
+  <button class="filter-chip" type="button" data-filter="Other" aria-pressed="false">Other</button>
+</div>
+<div id="documentList" class="document-list"></div>
